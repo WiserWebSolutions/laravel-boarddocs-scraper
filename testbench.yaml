@@ -1,0 +1,7 @@
+providers:
+  - BoardDocsScraper\BoardDocsServiceProvider
+
+env:
+  - BOARDDOCS_SITE="pa/phoe"
+  - BOARDDOCS_REQUEST_DELAY=0.1
+  - CACHE_STORE=array

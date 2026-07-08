@@ -1,0 +1,65 @@
+{
+    "name": "wiserwebsolutions/laravel-boarddocs-scraper",
+    "description": "A Laravel package that scans public BoardDocs sites for agendas and attachments, exposes a fluent unofficial API, and exports self-contained meeting PDFs with remote links rewritten as in-document anchors.",
+    "keywords": ["laravel", "boarddocs", "pdf", "scraper", "agenda", "school-board", "ai"],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Daniel Wiser",
+            "email": "dwiser@graboyes.com"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "ext-dom": "*",
+        "ext-json": "*",
+        "illuminate/console": "^11.0|^12.0|^13.0",
+        "illuminate/contracts": "^11.0|^12.0|^13.0",
+        "illuminate/http": "^11.0|^12.0|^13.0",
+        "illuminate/support": "^11.0|^12.0|^13.0",
+        "setasign/fpdi": "^2.6",
+        "symfony/css-selector": "^6.4|^7.0|^8.0",
+        "symfony/dom-crawler": "^6.4|^7.0|^8.0",
+        "tecnickcom/tcpdf": "^6.7"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^9.0|^10.0",
+        "pestphp/pest": "^3.0",
+        "pestphp/pest-plugin-laravel": "^3.0"
+    },
+    "suggest": {
+        "laravel/ai": "Required to use the bundled AI SDK Tool classes (SearchAgendasTool, GetMeetingTool, ListCommitteesTool) so LLM agents can search and consume exported agendas.",
+        "spatie/browsershot": "Required to use the 'browsershot' PDF engine for high-fidelity (headless Chrome) agenda rendering. Needs Node + Chromium."
+    },
+    "autoload": {
+        "psr-4": {
+            "BoardDocsScraper\\": "src/"
+        },
+        "files": [
+            "src/helpers.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "BoardDocsScraper\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "BoardDocsScraper\\BoardDocsServiceProvider"
+            ],
+            "aliases": {
+                "BoardDocs": "BoardDocsScraper\\Facades\\BoardDocs"
+            }
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
