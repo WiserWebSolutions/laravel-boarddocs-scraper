@@ -8,7 +8,7 @@ it('rewrites BoardDocs links to internal PDF page anchors', function () {
     $saved = [
         new SavedAttachment(
             bookmark: 'report.pdf',
-            blob: '',
+            path: '',
             resolvedUrl: 'https://go.boarddocs.com/pa/phoe/Board.nsf/files/ABC1234567/$file/report.pdf',
             href: '/pa/phoe/Board.nsf/files/ABC1234567/$file/report.pdf',
             fileUnique: 'ABC1234567',

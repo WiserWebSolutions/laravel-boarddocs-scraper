@@ -27,47 +27,52 @@ class TcpdfEngine implements PdfEngine
         $saved = $document->savedAttachments;
         $cleanAgenda = AgendaHtml::clean($document->agendaHtml);
 
-        // (1) Agenda page count (layout is independent of link href values).
-        $agendaPages = $this->agendaPageCount($document, $cleanAgenda);
+        // Attachments were streamed straight to a temp dir on download (see
+        // AttachmentCollector); always clean that dir up, even on failure.
+        $tempFiles = array_map(fn ($att) => $att->path, $saved);
 
-        // (2) Probe attachments and predict their destination pages.
-        $info = ($document->selfContained() && ! empty($saved)) ? Assembler::probe($saved) : [];
-        $predicted = ! empty($info)
-            ? Assembler::predictPages($agendaPages, $saved, $info, $document->embedNonPdf())
-            : [];
+        try {
+            // (1) Agenda page count (layout is independent of link href values).
+            $agendaPages = $this->agendaPageCount($document, $cleanAgenda);
 
-        // (3) Rewrite BoardDocs links to internal page anchors.
-        $agendaFragment = $cleanAgenda;
-        if ($document->remapLinks() && ! empty($predicted)) {
-            [$agendaFragment] = LinkRewriter::rewrite(
-                $cleanAgenda,
-                $saved,
-                $document->baseUrl,
-                $document->site,
-                $predicted,
-            );
+            // (2) Probe attachments and predict their destination pages.
+            $info = ($document->selfContained() && ! empty($saved)) ? Assembler::probe($saved) : [];
+            $predicted = ! empty($info)
+                ? Assembler::predictPages($agendaPages, $saved, $info, $document->embedNonPdf())
+                : [];
+
+            // (3) Rewrite BoardDocs links to internal page anchors.
+            $agendaFragment = $cleanAgenda;
+            if ($document->remapLinks() && ! empty($predicted)) {
+                [$agendaFragment] = LinkRewriter::rewrite(
+                    $cleanAgenda,
+                    $saved,
+                    $document->baseUrl,
+                    $document->site,
+                    $predicted,
+                );
+            }
+
+            // (4) Render for real.
+            $pdf = Assembler::newPdf($document);
+            $pdf->AddPage();
+            $pdf->writeHTML(AgendaHtml::styleBlock()."\n".$agendaFragment, true, false, true, false, '');
+            $pdf->Bookmark('Agenda', 0, 0, 1);
+
+            $toc = [['title' => 'Agenda', 'page' => 1]];
+
+            if ($document->selfContained() && ! empty($saved)) {
+                [, $attachmentToc] = Assembler::append($pdf, $saved, $info, $document->embedNonPdf());
+                $toc = array_merge($toc, $attachmentToc);
+            }
+
+            $pageCount = $pdf->getPage();
+            $bytes = $pdf->Output($document->filename, 'S');
+
+            return new RenderedPdf($bytes, $pageCount, $toc);
+        } finally {
+            Assembler::cleanup($tempFiles);
         }
-
-        // (4) Render for real.
-        $pdf = Assembler::newPdf($document);
-        $pdf->AddPage();
-        $pdf->writeHTML(AgendaHtml::styleBlock()."\n".$agendaFragment, true, false, true, false, '');
-        $pdf->Bookmark('Agenda', 0, 0, 1);
-
-        $toc = [['title' => 'Agenda', 'page' => 1]];
-        $tempFiles = [];
-
-        if ($document->selfContained() && ! empty($saved)) {
-            [, $attachmentToc] = Assembler::append($pdf, $saved, $info, $document->embedNonPdf(), $tempFiles);
-            $toc = array_merge($toc, $attachmentToc);
-        }
-
-        $pageCount = $pdf->getPage();
-        $bytes = $pdf->Output($document->filename, 'S');
-
-        Assembler::cleanup($tempFiles);
-
-        return new RenderedPdf($bytes, $pageCount, $toc);
     }
 
     /**

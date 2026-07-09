@@ -32,25 +32,36 @@ class AttachmentCollector
         $meetingApiFiles = $this->client->fetchItemAttachments($meeting->unique, $committeeId);
         $iconItems = array_values(array_filter($items, fn (AgendaItemData $i) => $i->hasAttachment));
 
+        // One shared temp directory per meeting; every attachment streams
+        // straight into it so its bytes never have to live in PHP memory.
+        $tempDir = sys_get_temp_dir().DIRECTORY_SEPARATOR.'bdscraper_'.bin2hex(random_bytes(5));
+        if (! is_dir($tempDir) && ! mkdir($tempDir, 0777, true) && ! is_dir($tempDir)) {
+            throw new BoardDocsException("Could not create temp directory '{$tempDir}' for attachment downloads.");
+        }
+
         $saved = [];
         $usedBookmarks = [];
         $downloaded = [];
 
-        $save = function (array $files, string $itemUnique = '') use (&$saved, &$usedBookmarks, &$downloaded): void {
+        $save = function (array $files, string $itemUnique = '') use (&$saved, &$usedBookmarks, &$downloaded, $tempDir): void {
             foreach ($files as $att) {
                 /** @var AttachmentData $att */
                 if (isset($downloaded[$att->unique])) {
                     continue;
                 }
                 $href = Urls::resolveAttachmentUrl($att->href, $this->client->baseUrl());
-                $blob = $this->client->getBytes($href);
-                if ($blob === '') {
+                $bookmark = $this->uniqueBookmarkName($att->name, $att->unique, $usedBookmarks);
+                $path = $tempDir.DIRECTORY_SEPARATOR.$bookmark;
+
+                $size = $this->client->downloadToFile($href, $path);
+                if ($size === 0) {
+                    @unlink($path);
                     throw new BoardDocsException("Empty download for attachment '{$att->name}' ({$href}).");
                 }
-                $bookmark = $this->uniqueBookmarkName($att->name, $att->unique, $usedBookmarks);
+
                 $saved[] = new SavedAttachment(
                     bookmark: $bookmark,
-                    blob: $blob,
+                    path: $path,
                     resolvedUrl: $href,
                     href: $att->href,
                     fileUnique: $att->unique,

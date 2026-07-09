@@ -3,8 +3,6 @@
 namespace BoardDocsScraper\Pdf;
 
 use BoardDocsScraper\Data\SavedAttachment;
-use BoardDocsScraper\Support\Urls;
-use setasign\Fpdi\PdfParser\StreamReader;
 use setasign\Fpdi\Tcpdf\Fpdi;
 
 /**
@@ -54,7 +52,7 @@ class Assembler
             }
             try {
                 $probe = new Fpdi;
-                $count = $probe->setSourceFile(StreamReader::createByString($att->blob));
+                $count = $probe->setSourceFile($att->path);
                 $info[$i] = ['importable' => $count > 0, 'count' => (int) $count];
             } catch (\Throwable $e) {
                 $info[$i] = ['importable' => false, 'count' => 0];
@@ -70,10 +68,9 @@ class Assembler
      *
      * @param  SavedAttachment[]  $saved
      * @param  array<int, array{importable:bool, count:int}>  $info
-     * @param  array<int, string>  $tempFiles  (by ref) temp paths to clean up after Output
      * @return array{0: array<int,int>, 1: array<int, array{title:string,page:int}>}  [pageForIndex, toc]
      */
-    public static function append(Fpdi $pdf, array $saved, array $info, bool $embedNonPdf, array &$tempFiles): array
+    public static function append(Fpdi $pdf, array $saved, array $info, bool $embedNonPdf): array
     {
         $pageForIndex = [];
         $toc = [];
@@ -84,7 +81,7 @@ class Assembler
                 continue;
             }
             try {
-                $count = $pdf->setSourceFile(StreamReader::createByString($att->blob));
+                $count = $pdf->setSourceFile($att->path);
                 for ($p = 1; $p <= $count; $p++) {
                     $tpl = $pdf->importPage($p);
                     $size = $pdf->getTemplateSize($tpl);
@@ -120,13 +117,12 @@ class Assembler
 
             foreach ($embeds as $i) {
                 $att = $saved[$i];
-                $path = self::writeTemp($att, $tempFiles);
                 try {
                     $y = $pdf->GetY();
                     $pdf->Annotation(12, $y, 6, 6, $att->bookmark, [
                         'Subtype' => 'FileAttachment',
                         'Name' => 'Paperclip',
-                        'FS' => $path,
+                        'FS' => $att->path,
                     ]);
                 } catch (\Throwable $e) {
                     // Embedding is best-effort; keep the listing regardless.
@@ -181,23 +177,6 @@ class Assembler
         }
 
         return $pageForIndex;
-    }
-
-    /**
-     * @param  array<int, string>  $tempFiles  (by ref)
-     */
-    protected static function writeTemp(SavedAttachment $att, array &$tempFiles): string
-    {
-        $dir = sys_get_temp_dir().DIRECTORY_SEPARATOR.'bdscraper_'.bin2hex(random_bytes(5));
-        if (! is_dir($dir)) {
-            mkdir($dir, 0777, true);
-        }
-        $name = Urls::sanitizePathComponent($att->bookmark);
-        $path = $dir.DIRECTORY_SEPARATOR.$name;
-        file_put_contents($path, $att->blob);
-        $tempFiles[] = $path;
-
-        return $path;
     }
 
     /**

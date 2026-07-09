@@ -34,40 +34,41 @@ class BrowsershotEngine implements PdfEngine
             );
         }
 
-        $agendaBytes = $this->renderAgenda($document);
+        $saved = $document->savedAttachments;
 
-        $pdf = Assembler::newPdf($document);
-        $count = $pdf->setSourceFile(StreamReader::createByString($agendaBytes));
-        for ($p = 1; $p <= $count; $p++) {
-            $tpl = $pdf->importPage($p);
-            $size = $pdf->getTemplateSize($tpl);
-            $orient = ($size['width'] ?? 0) > ($size['height'] ?? 0) ? 'L' : 'P';
-            $pdf->AddPage($orient, [$size['width'], $size['height']]);
-            $pdf->useTemplate($tpl);
+        // Attachments were streamed straight to a temp dir on download (see
+        // AttachmentCollector); always clean that dir up, even on failure.
+        $tempFiles = array_map(fn ($att) => $att->path, $saved);
+
+        try {
+            $agendaBytes = $this->renderAgenda($document);
+
+            $pdf = Assembler::newPdf($document);
+            $count = $pdf->setSourceFile(StreamReader::createByString($agendaBytes));
+            for ($p = 1; $p <= $count; $p++) {
+                $tpl = $pdf->importPage($p);
+                $size = $pdf->getTemplateSize($tpl);
+                $orient = ($size['width'] ?? 0) > ($size['height'] ?? 0) ? 'L' : 'P';
+                $pdf->AddPage($orient, [$size['width'], $size['height']]);
+                $pdf->useTemplate($tpl);
+            }
+            $pdf->Bookmark('Agenda', 0, 0, 1);
+
+            $toc = [['title' => 'Agenda', 'page' => 1]];
+
+            if ($document->selfContained() && ! empty($saved)) {
+                $info = Assembler::probe($saved);
+                [, $attachmentToc] = Assembler::append($pdf, $saved, $info, $document->embedNonPdf());
+                $toc = array_merge($toc, $attachmentToc);
+            }
+
+            $pageCount = $pdf->getPage();
+            $bytes = $pdf->Output($document->filename, 'S');
+
+            return new RenderedPdf($bytes, $pageCount, $toc);
+        } finally {
+            Assembler::cleanup($tempFiles);
         }
-        $pdf->Bookmark('Agenda', 0, 0, 1);
-
-        $toc = [['title' => 'Agenda', 'page' => 1]];
-        $tempFiles = [];
-
-        if ($document->selfContained() && ! empty($document->savedAttachments)) {
-            $info = Assembler::probe($document->savedAttachments);
-            [, $attachmentToc] = Assembler::append(
-                $pdf,
-                $document->savedAttachments,
-                $info,
-                $document->embedNonPdf(),
-                $tempFiles,
-            );
-            $toc = array_merge($toc, $attachmentToc);
-        }
-
-        $pageCount = $pdf->getPage();
-        $bytes = $pdf->Output($document->filename, 'S');
-
-        Assembler::cleanup($tempFiles);
-
-        return new RenderedPdf($bytes, $pageCount, $toc);
     }
 
     protected function renderAgenda(MeetingDocument $document): string

@@ -200,6 +200,23 @@ class BoardDocsClient
         return $this->request()->get($url)->throw()->body();
     }
 
+    /**
+     * Stream a download straight to disk instead of buffering it in memory,
+     * so large attachments do not add their full size to the PHP heap on top
+     * of what TCPDF/FPDI already hold while assembling the merged PDF.
+     *
+     * @return int  bytes written
+     */
+    public function downloadToFile(string $url, string $destination): int
+    {
+        $url = Urls::resolveAttachmentUrl($url, $this->baseUrl);
+        $this->delay();
+
+        $this->request()->sink($destination)->get($url)->throw();
+
+        return is_file($destination) ? (int) filesize($destination) : 0;
+    }
+
     protected function request(): PendingRequest
     {
         return $this->http
