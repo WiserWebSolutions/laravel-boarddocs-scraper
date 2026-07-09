@@ -23,6 +23,7 @@
         "tecnickcom/tcpdf": "^6.7"
     },
     "require-dev": {
+        "laravel/ai": "0.x-dev",
         "orchestra/testbench": "^9.0|^10.0",
         "pestphp/pest": "^3.0",
         "pestphp/pest-plugin-laravel": "^3.0"

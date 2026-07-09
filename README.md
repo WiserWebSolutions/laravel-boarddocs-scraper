@@ -130,7 +130,7 @@ php artisan boarddocs:search budget transportation --committee=Finance --limit=1
 ```
 
 Meetings whose PDF already exists are skipped, except those within
-`scan.refresh_recent_days` (default 30) which are re-exported.
+`scan.refresh_recent_days` (default 7) which are re-exported.
 
 ## Laravel AI SDK integration
 
@@ -172,6 +172,42 @@ class MyAgent implements Agent, HasTools
 - **GetMeetingTool** — full indexed record (agenda text, attachments + pages) for one `path`.
 - **ListCommitteesTool** — live committee list for a site.
 
+### Vector store search (optional)
+
+By default `BoardDocsAgent` searches the local `index.jsonl` via `SearchAgendasTool`
+(free, deterministic keyword search). You can instead delegate search to a
+[vector store](https://laravel.com/docs/13.x/ai-sdk#vector-stores) so the model performs
+semantic retrieval over the actual meeting PDFs — useful when relevant content lives in
+scanned attachments or phrasing that keyword search misses.
+
+1. Create a store once (OpenAI or Gemini only) and wire up its ID:
+
+   ```bash
+   php artisan boarddocs:vector-store:create "BoardDocs Agendas" --write-env
+   ```
+
+   This creates the store, then writes `BOARDDOCS_AI_SEARCH_DRIVER=vector` and
+   `BOARDDOCS_VECTOR_STORE_ID` into `.env` for you. Omit `--write-env` to just print the
+   values and add them yourself; pass `--provider=openai` (or `gemini`) to pin a provider
+   other than your app's default. Equivalent by hand:
+
+   ```php
+   use Laravel\Ai\Stores;
+
+   $store = Stores::create('BoardDocs Agendas');
+   // put $store->id in .env as BOARDDOCS_VECTOR_STORE_ID
+   ```
+
+2. Run `php artisan boarddocs:scan` as usual. Whenever the vector driver is active, the
+   scan uploads each newly exported (or refreshed) meeting PDF into the store — tagged
+   with `path`/`committee`/`date`/`page_count` metadata so results can be mapped back to
+   `GetMeetingTool` — and backfills any already-exported PDFs that were never synced.
+
+With the driver set to `vector`, `BoardDocsAgent` registers
+`Laravel\Ai\Providers\Tools\FileSearch` against that store instead of `SearchAgendasTool`
+(falling back to `SearchAgendasTool` automatically if `vector_store.id` isn't set).
+`GetMeetingTool` and `ListCommitteesTool` are unaffected by the driver either way.
+
 ## Configuration
 
 See `config/boarddocs.php`. Highlights:
@@ -185,6 +221,8 @@ See `config/boarddocs.php`. Highlights:
 | `pdf.engine` | `tcpdf` or `browsershot` |
 | `pdf.self_contained`, `pdf.remap_links`, `pdf.embed_non_pdf` | Self-contained PDF behavior |
 | `scan.refresh_recent_days` | Re-export window for recent meetings |
+| `ai.search_driver` | `jsonl` (default, local keyword search) or `vector` |
+| `ai.vector_store.id`, `ai.vector_store.provider` | Vector store used when `ai.search_driver` is `vector` |
 
 ## Testing
 
@@ -192,6 +230,12 @@ See `config/boarddocs.php`. Highlights:
 composer install
 vendor/bin/pest
 ```
+
+`laravel/ai` is a dev dependency (`composer install` pulls it in) so the `tests/Feature/Ai`
+suite — `BoardDocsAgent`, the AI SDK tool classes, `VectorStoreSync`, and
+`boarddocs:vector-store:create` — is fully exercised against the SDK's fakes (`Stores::fake()`)
+by default. If `laravel/ai` isn't present (e.g. `composer install --no-dev`), that suite
+skips itself with a clear message instead of failing.
 
 ## License
 

@@ -59,6 +59,15 @@ class IndexBuilder
         return $this;
     }
 
+    /**
+     * The previously loaded entry for a path, if any (e.g. to carry forward a
+     * "vector_document_id" before it's overwritten by a fresh entry).
+     */
+    public function get(string $path): ?array
+    {
+        return $this->entries[$path] ?? null;
+    }
+
     public function putMeeting(MeetingPdf $pdf, ?string $relativePath = null): static
     {
         return $this->put($pdf->indexEntry($relativePath));

@@ -2,6 +2,7 @@
 
 namespace BoardDocsScraper;
 
+use BoardDocsScraper\Console\CreateVectorStoreCommand;
 use BoardDocsScraper\Console\ScanCommand;
 use BoardDocsScraper\Console\SearchCommand;
 use Illuminate\Support\ServiceProvider;
@@ -33,6 +34,7 @@ class BoardDocsServiceProvider extends ServiceProvider
             $this->commands([
                 ScanCommand::class,
                 SearchCommand::class,
+                CreateVectorStoreCommand::class,
             ]);
         }
     }

@@ -2,6 +2,7 @@
 
 namespace BoardDocsScraper\Console;
 
+use BoardDocsScraper\Ai\VectorStoreSync;
 use BoardDocsScraper\BoardDocsManager;
 use BoardDocsScraper\Support\OutputPaths;
 use Illuminate\Console\Command;
@@ -74,7 +75,9 @@ class ScanCommand extends Command
         }
 
         $index = $manager->indexBuilder()->load();
-        $written = $skipped = $failed = 0;
+        $vectorSync = new VectorStoreSync($config);
+        $vectorSync = $vectorSync->enabled() ? $vectorSync : null;
+        $written = $skipped = $failed = $vectorSynced = 0;
 
         foreach ($committees as $committee) {
             $this->info("Committee: {$committee->name} ({$committee->committeeId})");
@@ -96,6 +99,14 @@ class ScanCommand extends Command
                 $rel = OutputPaths::meetingPath($config, $siteName, $committee->name, $meeting->date());
 
                 if ($disk->exists($rel) && ! $this->withinRecent($meeting->date(), $refreshDays)) {
+                    if ($vectorSync !== null && ! $this->option('dry-run')) {
+                        $existing = $index->get(OutputPaths::relativeToBase($config, $rel));
+                        if ($existing !== null && empty($existing['vector_document_id'])) {
+                            $index->put($vectorSync->sync($existing, $rel));
+                            $vectorSynced++;
+                        }
+                    }
+
                     $this->line("  skip existing {$meeting->date()}");
                     $skipped++;
 
@@ -116,7 +127,15 @@ class ScanCommand extends Command
 
                     $pdf = $agenda->toPdf();
                     $pdf->save($rel);
-                    $index->putMeeting($pdf, $rel);
+
+                    $entry = $pdf->indexEntry($rel);
+
+                    if ($vectorSync !== null) {
+                        $entry = $vectorSync->sync($entry, $rel, $index->get($entry['path']));
+                        $vectorSynced++;
+                    }
+
+                    $index->put($entry);
                     $written++;
 
                     $this->info(sprintf(
@@ -138,7 +157,9 @@ class ScanCommand extends Command
         }
 
         $this->newLine();
-        $this->info("Done. wrote={$written} skipped={$skipped} failed={$failed}");
+        $this->info($vectorSync !== null
+            ? "Done. wrote={$written} skipped={$skipped} failed={$failed} vector_synced={$vectorSynced}"
+            : "Done. wrote={$written} skipped={$skipped} failed={$failed}");
 
         return self::SUCCESS;
     }

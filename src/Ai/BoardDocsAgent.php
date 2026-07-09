@@ -8,6 +8,7 @@ use BoardDocsScraper\Ai\Tools\SearchAgendasTool;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\HasTools;
 use Laravel\Ai\Promptable;
+use Laravel\Ai\Providers\Tools\FileSearch;
 use Stringable;
 
 /**
@@ -30,8 +31,9 @@ class BoardDocsAgent implements Agent, HasTools
 
         Guidelines:
         - Start by searching with concise keywords. If results are thin, broaden terms.
-        - Use the get-meeting tool with a result's "path" to read the full agenda text
-          and see which attachments (and their PDF page numbers) are relevant.
+        - Every search result (or file-search citation) carries a "path" — pass it to
+          the get-meeting tool to read the full agenda text and see which attachments
+          (and their PDF page numbers) are relevant.
         - Cite the meeting date and committee for every claim, and mention the source
           PDF path so a human can open it.
         - If nothing relevant is found, say so plainly rather than guessing.
@@ -39,12 +41,23 @@ class BoardDocsAgent implements Agent, HasTools
     }
 
     /**
+     * Registers FileSearch against the configured vector store instead of the
+     * local SearchAgendasTool when "boarddocs.ai.search_driver" is "vector"
+     * (falling back to SearchAgendasTool if no vector_store.id is configured).
+     *
      * @return \Laravel\Ai\Contracts\Tool[]
      */
     public function tools(): iterable
     {
+        $config = app('boarddocs')->config();
+        $storeId = $config['ai']['vector_store']['id'] ?? null;
+
+        $searchTool = ($config['ai']['search_driver'] ?? 'jsonl') === 'vector' && $storeId
+            ? new FileSearch(stores: [$storeId])
+            : new SearchAgendasTool;
+
         return [
-            new SearchAgendasTool,
+            $searchTool,
             new GetMeetingTool,
             new ListCommitteesTool,
         ];

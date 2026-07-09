@@ -10,7 +10,10 @@ abstract class TestCase extends Orchestra
 {
     protected function getPackageProviders($app): array
     {
-        return [BoardDocsServiceProvider::class];
+        return array_filter([
+            BoardDocsServiceProvider::class,
+            class_exists(\Laravel\Ai\AiServiceProvider::class) ? \Laravel\Ai\AiServiceProvider::class : null,
+        ]);
     }
 
     protected function getPackageAliases($app): array

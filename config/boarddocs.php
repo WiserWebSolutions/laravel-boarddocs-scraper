@@ -127,8 +127,8 @@ return [
     */
 
     'scan' => [
-        'refresh_recent_days' => (int) env('BOARDDOCS_REFRESH_RECENT_DAYS', 30),
-        'memory_limit' => env('BOARDDOCS_MEMORY_LIMIT', '512M'),
+        'refresh_recent_days' => (int) env('BOARDDOCS_REFRESH_RECENT_DAYS', 7),
+        'memory_limit' => env('BOARDDOCS_MEMORY_LIMIT', '256M'),
     ],
 
     /*
@@ -139,11 +139,31 @@ return [
     | Defaults for the bundled Laravel AI SDK tools that search the exported
     | index so agents can quickly find and consume agenda information.
     |
+    | search_driver: "jsonl" (default) makes BoardDocsAgent register the local
+    |                keyword-search SearchAgendasTool. "vector" makes it
+    |                register Laravel\Ai\Providers\Tools\FileSearch against
+    |                vector_store.id instead, so the model performs semantic
+    |                retrieval itself. Falls back to "jsonl" if vector_store.id
+    |                is empty. GetMeetingTool/ListCommitteesTool are unaffected
+    |                either way. Requires `composer require laravel/ai`.
+    |
+    | vector_store.id: the store ID returned by Laravel\Ai\Stores::create().
+    |                   boarddocs:scan uploads each exported meeting PDF into
+    |                   this store (with path/committee/date metadata) whenever
+    |                   search_driver is "vector".
+    |
     */
 
     'ai' => [
         'max_results' => (int) env('BOARDDOCS_AI_MAX_RESULTS', 20),
         'snippet_length' => (int) env('BOARDDOCS_AI_SNIPPET_LENGTH', 300),
+
+        'search_driver' => env('BOARDDOCS_AI_SEARCH_DRIVER', 'jsonl'),
+
+        'vector_store' => [
+            'id' => env('BOARDDOCS_VECTOR_STORE_ID'),
+            'provider' => env('BOARDDOCS_VECTOR_STORE_PROVIDER'),
+        ],
     ],
 
 ];
