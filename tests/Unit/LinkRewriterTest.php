@@ -44,3 +44,17 @@ it('cleans scripts and styles from agenda html', function () {
         ->not->toContain('alert')
         ->toContain('<p>Hello</p>');
 });
+
+it('strips the "<width> none" border shorthand that crashes TCPDF', function () {
+    // TCPDF's getCSSBorderStyle() misreads this common 2-token shorthand as
+    // [style, color] instead of [width, style], then throws trying to
+    // resolve "none" as a color (TCPDF_COLORS::getSpotColor() case-mismatch
+    // bug). A "none" border already paints nothing, so dropping it is safe.
+    $html = '<body><img style="box-sizing: border-box; border: 0px none; width: 227px;"></body>';
+
+    $cleaned = AgendaHtml::clean($html);
+
+    expect($cleaned)->not->toContain('none');
+    expect($cleaned)->toContain('box-sizing: border-box;');
+    expect($cleaned)->toContain('width: 227px;');
+});

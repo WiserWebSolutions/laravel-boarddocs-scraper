@@ -10,14 +10,20 @@ use BoardDocsScraper\Data\AttachmentData;
  */
 class FileLinkParser
 {
-    /** CSS classes observed on file download anchors. */
+    /**
+     * CSS classes observed on *public* file download anchors. This package
+     * is public-data-only (see README), and administrative/executive/private
+     * file anchors are intentionally excluded: BoardDocs renders those dead
+     * anchors even on the public print agenda, but never actually serves the
+     * underlying file to the public — downloading one 404s every time.
+     */
     public const FILE_LINK_CLASSES = [
         'public-file',
         'file',
-        'administrative-file',
-        'executive-file',
-        'private-file',
     ];
+
+    /** Class-name substrings marking a non-public file link to skip. */
+    protected const NON_PUBLIC_MARKERS = ['admin', 'executive', 'private'];
 
     /**
      * @return AttachmentData[]
@@ -79,6 +85,13 @@ class FileLinkParser
                 if ($unique === '' || isset($seen[$unique])) {
                     continue;
                 }
+                if (self::isNonPublicClass($m[1])) {
+                    // Mark as seen so the class-blind bare /files/ID/
+                    // fallback below doesn't re-add this non-public anchor.
+                    $seen[$unique] = true;
+
+                    continue;
+                }
                 $seen[$unique] = true;
                 [$name, $size] = self::splitSize(self::decode(trim($rawName)));
                 $attachments[] = new AttachmentData($unique, $href, $name, $size);
@@ -118,5 +131,18 @@ class FileLinkParser
     private static function decode(string $value): string
     {
         return html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    }
+
+    private static function isNonPublicClass(string $classAttr): bool
+    {
+        $lower = strtolower($classAttr);
+
+        foreach (self::NON_PUBLIC_MARKERS as $marker) {
+            if (str_contains($lower, $marker)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

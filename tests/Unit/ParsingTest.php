@@ -33,6 +33,23 @@ it('parses public file links with sizes', function () {
     expect($files[0]->isPdf())->toBeTrue();
 });
 
+it('skips administrative/executive/private file anchors entirely', function () {
+    // BoardDocs renders these dead anchors even on the public print agenda,
+    // but never actually serves the file to the public — downloading one
+    // 404s every time. This package is public-data-only, so it must not
+    // pick them up via either the class-aware match or the class-blind
+    // bare /files/ID/ fallback.
+    $html = '<a class="public-file" unique="PUB0000001" href="/pa/phoe/Board.nsf/files/PUB0000001/$file/agenda.pdf">Public Report.pdf (1 MB)</a>'
+        .'<a class="admin-file" unique="ADM0000001" href="/pa/phoe/Board.nsf/files/ADM0000001/$file/minutes.docx">Admin Only.docx</a>'
+        .'<a class="executive-file" unique="EXE0000001" href="/pa/phoe/Board.nsf/files/EXE0000001/$file/exec.docx">Executive Session.docx</a>'
+        .'<a class="private-file" unique="PRV0000001" href="/pa/phoe/Board.nsf/files/PRV0000001/$file/private.docx">Private.docx</a>';
+
+    $files = FileLinkParser::parse($html);
+
+    expect($files)->toHaveCount(1);
+    expect($files[0]->unique)->toBe('PUB0000001');
+});
+
 it('parses agenda items and their category section', function () {
     $html = <<<'HTML'
     <ul>

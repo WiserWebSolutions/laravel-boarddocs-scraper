@@ -14,12 +14,35 @@ class AgendaHtml
     public static function clean(string $rawHtml): string
     {
         $html = preg_replace('/<(script|style|noscript)\b[^>]*>[\s\S]*?<\/\1>/i', '', $rawHtml);
+        $html = self::stripUnparsableBorderNone($html);
 
         if (preg_match('/<body\b[^>]*>([\s\S]*?)<\/body>/i', $html, $m)) {
             return $m[1];
         }
 
         return $html;
+    }
+
+    /**
+     * TCPDF's getCSSBorderStyle() misreads the 2-token "<width> none" border
+     * shorthand (e.g. "border: 0px none") as [style, color] instead of
+     * [width, style], then tries to resolve "none" as a color and hits a
+     * case-mismatched array lookup in TCPDF_COLORS::getSpotColor(), which
+     * throws "Undefined array key \"None\"" and aborts the whole render.
+     * A "none" border already paints nothing, so the declaration is safe to
+     * drop outright rather than trip that bug.
+     */
+    protected static function stripUnparsableBorderNone(string $html): string
+    {
+        return preg_replace_callback('/style\s*=\s*"([^"]*)"/i', function (array $m) {
+            $style = preg_replace(
+                '/border(-top|-right|-bottom|-left)?\s*:\s*[\d.]+(px|pt|em|rem|%)?\s+none\s*;?\s*/i',
+                '',
+                $m[1]
+            );
+
+            return 'style="'.$style.'"';
+        }, $html);
     }
 
     /**
