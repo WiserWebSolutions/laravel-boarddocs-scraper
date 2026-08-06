@@ -8,7 +8,9 @@ use BoardDocsScraper\Parsing\AgendaParser;
 use BoardDocsScraper\Pdf\MeetingDocument;
 use BoardDocsScraper\Pdf\PdfManager;
 use BoardDocsScraper\Support\AttachmentCollector;
+use BoardDocsScraper\Support\OutputPaths;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * A fluent builder around a single meeting's agenda. Terminal methods fetch the
@@ -193,6 +195,10 @@ class Agenda
                 $printHtml,
                 $this->outlineItems()->all(),
             );
+
+            if ($this->config['output']['save_attachments'] ?? true) {
+                $this->persistAttachments($saved);
+            }
         }
 
         $document = new MeetingDocument(
@@ -219,5 +225,35 @@ class Agenda
     public function save(?string $path = null, ?string $disk = null): string
     {
         return $this->toPdf()->save($path, $disk);
+    }
+
+    /**
+     * Archive each attachment's raw downloaded bytes next to the agenda PDF,
+     * before the PDF render pipeline deletes its temp copies. This is
+     * intentionally independent of whether the file also gets merged into the
+     * PDF, so the original source document is always available to refer back
+     * to (e.g. to open a spreadsheet natively rather than its embedded copy).
+     *
+     * @param  \BoardDocsScraper\Data\SavedAttachment[]  $saved
+     */
+    protected function persistAttachments(array $saved): void
+    {
+        if (empty($saved)) {
+            return;
+        }
+
+        $committee = $this->meeting->committee();
+        $dir = OutputPaths::attachmentsPath(
+            $this->config,
+            $committee->site()->name(),
+            $committee->name,
+            $this->meeting->date(),
+        );
+
+        $disk = Storage::disk($this->config['output']['disk'] ?? 'local');
+
+        foreach ($saved as $attachment) {
+            $disk->put($dir.'/'.$attachment->bookmark, file_get_contents($attachment->path));
+        }
     }
 }

@@ -74,6 +74,22 @@ class MeetingPdf
     }
 
     /**
+     * The directory this meeting's raw attachment files are archived under
+     * (only meaningful when output.save_attachments collected any).
+     */
+    public function attachmentsDir(): string
+    {
+        $committee = $this->meeting->committee();
+
+        return OutputPaths::attachmentsPath(
+            $this->config,
+            $committee->site()->name(),
+            $committee->name,
+            $this->meeting->date(),
+        );
+    }
+
+    /**
      * Build the index.jsonl record for this meeting (same shape as the original
      * project), without needing to re-parse the generated PDF.
      */
@@ -91,6 +107,9 @@ class MeetingPdf
             'page_count' => $this->pageCount(),
             'agenda_text' => $this->agendaText,
             'attachments' => $this->rendered->attachmentToc(),
+            'attachments_path' => ! empty($this->attachments)
+                ? OutputPaths::relativeToBase($this->config, $this->attachmentsDir())
+                : null,
         ];
     }
 

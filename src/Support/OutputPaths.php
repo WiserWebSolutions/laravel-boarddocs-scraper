@@ -22,6 +22,23 @@ class OutputPaths
     }
 
     /**
+     * The directory a meeting's raw attachment files are archived under, next
+     * to its agenda PDF: {output.path}/{district}/{visibility}/{committee}/{YYYY-MM-DD}-Attachments
+     */
+    public static function attachmentsPath(array $config, string $site, string $committeeName, string $date): string
+    {
+        $base = trim((string) ($config['output']['path'] ?? 'boarddocs'), '/');
+
+        return implode('/', array_filter([
+            $base,
+            Urls::districtIdFromSite($site),
+            $config['output']['visibility'] ?? 'Public',
+            Urls::sanitizePathComponent($committeeName),
+            $date.'-Attachments',
+        ]));
+    }
+
+    /**
      * Strip the configured output base from a full storage path so it matches the
      * "path" field used in index.jsonl.
      */

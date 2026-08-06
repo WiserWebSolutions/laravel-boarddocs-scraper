@@ -100,10 +100,15 @@ it('renders a self-contained meeting PDF with a merged attachment and remapped l
     expect($entry['date'])->toBe('2024-01-08');
     expect($entry['attachments'])->not->toBeEmpty();
     expect($entry['attachments'][0]['title'])->toBe('Personnel Report.pdf');
+    expect($entry['attachments_path'])->toContain('pa-phoe/Public/Board of School Directors/2024-01-08-Attachments');
 
     $path = $pdf->save();
     Storage::disk('local')->assertExists($path);
     expect($path)->toContain('pa-phoe/Public/Board of School Directors/2024-01-08-Agenda.pdf');
+
+    // The raw attachment, as originally downloaded, is archived alongside the
+    // merged PDF rather than only living inside it.
+    Storage::disk('local')->assertExists($pdf->attachmentsDir().'/Personnel Report.pdf');
 });
 
 it('caches committee discovery so repeat calls do not refetch', function () {

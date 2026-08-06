@@ -72,6 +72,14 @@ return [
         'path' => env('BOARDDOCS_OUTPUT_PATH', 'boarddocs'),
         'index' => env('BOARDDOCS_INDEX_PATH', 'boarddocs/index.jsonl'),
         'visibility' => 'Public',
+
+        // Archive each meeting's raw downloaded attachments (as originally
+        // fetched from BoardDocs) alongside the merged agenda PDF, under a
+        // "{date}-Attachments/" directory next to it. Independent of
+        // pdf.self_contained/embed_non_pdf, which only control what gets
+        // merged into the PDF itself — this keeps the untouched source files
+        // for reference even if they're also merged in.
+        'save_attachments' => (bool) env('BOARDDOCS_SAVE_ATTACHMENTS', true),
     ],
 
     /*
