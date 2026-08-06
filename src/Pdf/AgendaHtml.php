@@ -15,6 +15,7 @@ class AgendaHtml
     {
         $html = preg_replace('/<(script|style|noscript)\b[^>]*>[\s\S]*?<\/\1>/i', '', $rawHtml);
         $html = self::stripUnparsableBorderNone($html);
+        $html = self::stripFontFormatting($html);
 
         if (preg_match('/<body\b[^>]*>([\s\S]*?)<\/body>/i', $html, $m)) {
             return $m[1];
@@ -46,6 +47,37 @@ class AgendaHtml
     }
 
     /**
+     * BoardDocs source HTML carries per-element inline font/position styling
+     * (font-family, font-size, line-height, color, absolute positioning, ...)
+     * copied from whatever word processor authored the agenda. TCPDF's HTML
+     * renderer applies those literally, and mismatched line-heights/positions
+     * between adjacent elements is what produces the overlapping text seen in
+     * rendered PDFs. Strip that formatting outright and let the default body
+     * font and the heading classes in styleBlock()/document() control
+     * appearance uniformly, rather than trying to preserve source styling.
+     */
+    protected static function stripFontFormatting(string $html): string
+    {
+        $html = preg_replace('/<\/?font\b[^>]*>/i', '', $html);
+
+        $disallowed = '/^(font(-.*)?|line-height|letter-spacing|color|text-decoration|position|top|left|right|bottom|vertical-align|text-indent|white-space)$/i';
+
+        $html = preg_replace_callback('/style\s*=\s*"([^"]*)"/i', function (array $m) use ($disallowed) {
+            $kept = [];
+            foreach (array_filter(array_map('trim', explode(';', $m[1]))) as $prop) {
+                $name = trim(explode(':', $prop, 2)[0]);
+                if (! preg_match($disallowed, $name)) {
+                    $kept[] = $prop;
+                }
+            }
+
+            return $kept ? 'style="'.implode('; ', $kept).';"' : '';
+        }, $html);
+
+        return preg_replace('/\s+(size|face)\s*=\s*"[^"]*"/i', '', $html);
+    }
+
+    /**
      * A minimal CSS block understood by TCPDF's writeHTML.
      */
     public static function styleBlock(): string
@@ -53,9 +85,9 @@ class AgendaHtml
         return <<<'HTML'
         <style>
             body { font-family: helvetica, sans-serif; font-size: 10pt; }
-            .print-meeting-date, .print-meeting-name { font-weight: bold; text-align: center; }
-            .category, .wrap-category { font-weight: bold; }
-            .item { }
+            .print-meeting-date, .print-meeting-name { font-family: helvetica, sans-serif; font-size: 13pt; font-weight: bold; text-align: center; }
+            .category, .wrap-category { font-family: helvetica, sans-serif; font-size: 11pt; font-weight: bold; }
+            .item { font-family: helvetica, sans-serif; font-size: 10pt; }
             a { color: #0645ad; }
         </style>
         HTML;
@@ -83,9 +115,9 @@ class AgendaHtml
         <base href="{$base}">
         <style>
           body { font-family: Arial, Helvetica, sans-serif; font-size: 11pt; margin: 24px; }
-          .print-meeting-date, .print-meeting-name { font-weight: bold; text-align: center; }
-          .category, .wrap-category { font-weight: bold; margin-top: 1em; }
-          .item { margin: 0.4em 0; }
+          .print-meeting-date, .print-meeting-name { font-family: Arial, Helvetica, sans-serif; font-size: 15pt; font-weight: bold; text-align: center; }
+          .category, .wrap-category { font-family: Arial, Helvetica, sans-serif; font-size: 13pt; font-weight: bold; margin-top: 1em; }
+          .item { font-family: Arial, Helvetica, sans-serif; font-size: 11pt; margin: 0.4em 0; }
           a { color: #0645ad; word-break: break-word; }
         </style></head><body>{$body}</body></html>
         HTML;
