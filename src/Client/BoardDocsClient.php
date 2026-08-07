@@ -15,6 +15,9 @@ use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Log;
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseInterface;
 
 /**
  * Low-level HTTP client for the public BoardDocs XHR endpoints. This is the
@@ -219,7 +222,7 @@ class BoardDocsClient
 
     protected function request(): PendingRequest
     {
-        return $this->http
+        $request = $this->http
             ->timeout((int) $this->config['http']['timeout'])
             ->withHeaders([
                 'accept' => 'application/json, text/javascript, */*; q=0.01',
@@ -227,6 +230,74 @@ class BoardDocsClient
                 'x-requested-with' => 'XMLHttpRequest',
                 'user-agent' => $this->config['http']['user_agent'],
             ]);
+
+        if ($this->config['http']['debug'] ?? false) {
+            $request->withMiddleware($this->debugMiddleware());
+        }
+
+        return $request;
+    }
+
+    /**
+     * Guzzle middleware that logs every outbound request/response (method,
+     * URL, status, elapsed time, and headers/body) so a scan that starts
+     * getting blocked with 403s can be traced after the fact.
+     */
+    protected function debugMiddleware(): callable
+    {
+        return function (callable $handler): callable {
+            return function (RequestInterface $request, array $options) use ($handler) {
+                $start = microtime(true);
+
+                Log::channel($this->debugLogChannel())->debug('boarddocs.request', [
+                    'method' => $request->getMethod(),
+                    'url' => (string) $request->getUri(),
+                    'headers' => $request->getHeaders(),
+                    'body' => (string) $request->getBody(),
+                ]);
+
+                return $handler($request, $options)->then(
+                    function (ResponseInterface $response) use ($request, $start) {
+                        $elapsedMs = round((microtime(true) - $start) * 1000, 1);
+
+                        Log::channel($this->debugLogChannel())->debug('boarddocs.response', [
+                            'url' => (string) $request->getUri(),
+                            'status' => $response->getStatusCode(),
+                            'elapsed_ms' => $elapsedMs,
+                            'headers' => $response->getHeaders(),
+                            'body' => substr((string) $response->getBody(), 0, 2000),
+                        ]);
+
+                        if ($response->getStatusCode() === 403) {
+                            Log::channel($this->debugLogChannel())->warning('boarddocs.blocked', [
+                                'url' => (string) $request->getUri(),
+                                'elapsed_ms' => $elapsedMs,
+                            ]);
+                        }
+
+                        $response->getBody()->rewind();
+
+                        return $response;
+                    },
+                    function (\Throwable $exception) use ($request, $start) {
+                        Log::channel($this->debugLogChannel())->error('boarddocs.error', [
+                            'url' => (string) $request->getUri(),
+                            'elapsed_ms' => round((microtime(true) - $start) * 1000, 1),
+                            'message' => $exception->getMessage(),
+                        ]);
+
+                        throw $exception;
+                    },
+                );
+            };
+        };
+    }
+
+    protected function debugLogChannel(): string
+    {
+        return array_key_exists('boarddocs', (array) config('logging.channels', []))
+            ? 'boarddocs'
+            : (string) config('logging.default');
     }
 
     protected function delay(): void

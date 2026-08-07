@@ -32,7 +32,7 @@ BoardDocs()->site('pa/phoe')
 ## Installation
 
 ```bash
-composer require graboyes/laravel-boarddocs-scraper
+composer require wiserwebsolutions/laravel-boarddocs-scraper
 php artisan vendor:publish --tag=boarddocs-config
 ```
 
@@ -87,6 +87,10 @@ $client = BoardDocs::client('pa/phoe');
 $client->discoverCommittees();
 $client->listMeetings($committeeId);
 $client->fetchPrintAgendaHtml($meetingId, $committeeId);
+$client->fetchAgendaHtml($meetingId, $committeeId);
+$client->fetchItemAttachments($itemId, $committeeId);   // AttachmentData[]
+$client->getBytes($fileUrl);                            // raw attachment bytes
+$client->downloadToFile($fileUrl, $destinationPath);    // streamed to disk instead
 ```
 
 ## Self-contained meeting PDFs
@@ -112,13 +116,17 @@ Two rendering engines are available (configure `boarddocs.pdf.engine`):
 php artisan boarddocs:scan --site=pa/phoe
 
 # Scope it
-php artisan boarddocs:scan --site=pa/phoe --committee=CTNNDT5F7A3B --limit=5 --since=2024-01-01
-php artisan boarddocs:scan --dry-run          # list without downloading
-php artisan boarddocs:scan --no-attachments   # agenda-only PDFs
+php artisan boarddocs:scan --site=pa/phoe --committee=CTNNDT5F7A3B --limit=5 --since=2024-01-01 --until=2024-12-31
+php artisan boarddocs:scan --dry-run                    # list without downloading
+php artisan boarddocs:scan --no-attachments             # agenda-only PDFs
 php artisan boarddocs:scan --engine=browsershot
+php artisan boarddocs:scan --fresh                      # bypass the committee/meeting cache
+php artisan boarddocs:scan --refresh-recent-days=14      # re-export recent meetings even if a PDF exists
+php artisan boarddocs:scan --memory-limit=512M           # raise memory_limit for this run only
 
 # Search the exported index
 php artisan boarddocs:search budget transportation --committee=Finance --limit=10
+php artisan boarddocs:search budget --json               # machine-readable output
 ```
 
 `index.jsonl` has the same shape as the original project (one meeting per line):
@@ -216,6 +224,8 @@ See `config/boarddocs.php`. Highlights:
 |-----|---------|
 | `site`, `base_url` | Default site slug and host |
 | `http.request_delay` | Polite delay between requests (seconds) |
+| `http.timeout` | Per-request timeout (seconds) |
+| `http.debug` | Log every request/response (status, timing, headers/body) — see [Troubleshooting](#troubleshooting) |
 | `cache.store`, `cache.ttl` | Cache store + TTL for committee/meeting/agenda data |
 | `output.disk`, `output.path`, `output.index` | Where PDFs and `index.jsonl` are written |
 | `pdf.engine` | `tcpdf` or `browsershot` |
@@ -223,6 +233,22 @@ See `config/boarddocs.php`. Highlights:
 | `scan.refresh_recent_days` | Re-export window for recent meetings |
 | `ai.search_driver` | `jsonl` (default, local keyword search) or `vector` |
 | `ai.vector_store.id`, `ai.vector_store.provider` | Vector store used when `ai.search_driver` is `vector` |
+
+## Troubleshooting
+
+BoardDocs will start returning `403` responses if a scan hits it too fast or too long.
+Enable request/response logging to see exactly when that starts happening:
+
+```dotenv
+BOARDDOCS_HTTP_DEBUG=true
+```
+
+Every outbound request and response (method, URL, status, elapsed time, headers, and a
+truncated body) is logged, and any `403` is additionally logged as a `warning` tagged
+`boarddocs.blocked`. Logs go to a `boarddocs` log channel if your app defines one in
+`config/logging.php`, otherwise to the app's default channel. If you're seeing 403s,
+raise `http.request_delay` (`BOARDDOCS_REQUEST_DELAY`) or scope the scan down with
+`--committee`/`--limit`/`--since`.
 
 ## Testing
 

@@ -36,6 +36,13 @@ return [
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '.
             '(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
         ),
+
+        // When enabled, every outbound request/response is logged (method,
+        // URL, status, elapsed time, and response headers/body) so a scan
+        // that starts hitting 403s from BoardDocs can be traced after the
+        // fact. Logs to the "boarddocs" channel if one is configured,
+        // otherwise falls back to the application's default log channel.
+        'debug' => (bool) env('BOARDDOCS_HTTP_DEBUG', false),
     ],
 
     /*
