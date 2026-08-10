@@ -11,10 +11,16 @@ use Illuminate\Support\Facades\Storage;
  * (default "boarddocs-public"), kept separate from output.path, which only
  * holds what we produce ourselves (the merged PDF + index).
  *
+ * Also holds the committee and per-committee meeting lists (as plain
+ * CommitteeData/MeetingData arrays), so `boarddocs:build` can enumerate what
+ * to build without making any BoardDocs request of its own — `boarddocs:scan`
+ * runs `boarddocs:prefetch` (which populates all of this) followed by
+ * `boarddocs:build` (which only ever reads it).
+ *
  * For a meeting that hasn't been exported yet, this doubles as a resilience
- * cache: it lets a scan finish building that meeting's PDF from disk if
- * BoardDocs starts returning 403s partway through a run — reconnecting only
- * for whatever individual file is missing from the archive. Agenda checks it
+ * cache: it lets a build finish that meeting's PDF from disk if BoardDocs
+ * starts returning 403s partway through a run — reconnecting only for
+ * whatever individual file is missing from the archive. Agenda checks it
  * before making a live request for exactly that reason; once a PDF has
  * actually been exported, the cache-hit shortcut no longer matters for that
  * meeting, but the archived files themselves are kept regardless.
@@ -28,6 +34,58 @@ class Archive
     public function enabled(): bool
     {
         return (bool) ($this->config['archive']['enabled'] ?? true);
+    }
+
+    /**
+     * @return array<int, array{committee_id: string, name: string}>|null
+     */
+    public function getCommittees(string $site): ?array
+    {
+        $path = OutputPaths::archiveCommitteesPath($this->config, $site);
+        if (! $this->disk()->exists($path)) {
+            return null;
+        }
+
+        $decoded = json_decode((string) $this->disk()->get($path), true);
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    /**
+     * @param  array<int, array{committee_id: string, name: string}>  $committees
+     */
+    public function putCommittees(string $site, array $committees): void
+    {
+        $this->disk()->put(
+            OutputPaths::archiveCommitteesPath($this->config, $site),
+            json_encode($committees, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+        );
+    }
+
+    /**
+     * @return array<int, array{unique: string, name: string, numberdate: string, unid: string}>|null
+     */
+    public function getMeetings(string $site, string $committeeName): ?array
+    {
+        $path = OutputPaths::archiveMeetingsPath($this->config, $site, $committeeName);
+        if (! $this->disk()->exists($path)) {
+            return null;
+        }
+
+        $decoded = json_decode((string) $this->disk()->get($path), true);
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    /**
+     * @param  array<int, array{unique: string, name: string, numberdate: string, unid: string}>  $meetings
+     */
+    public function putMeetings(string $site, string $committeeName, array $meetings): void
+    {
+        $this->disk()->put(
+            OutputPaths::archiveMeetingsPath($this->config, $site, $committeeName),
+            json_encode($meetings, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+        );
     }
 
     public function getAgendaHtml(string $site, string $committeeName, string $date): ?string

@@ -68,6 +68,38 @@ class OutputPaths
     }
 
     /**
+     * Where a site's archived committee list is kept, so `boarddocs:build` can
+     * enumerate committees without any live BoardDocs request:
+     * {archive.path}/{district}/committees.json
+     */
+    public static function archiveCommitteesPath(array $config, string $site): string
+    {
+        $base = trim((string) ($config['archive']['path'] ?? 'boarddocs-public'), '/');
+
+        return implode('/', array_filter([
+            $base,
+            Urls::districtIdFromSite($site),
+            'committees.json',
+        ]));
+    }
+
+    /**
+     * Where a committee's archived meeting list is kept, so `boarddocs:build`
+     * can enumerate its meetings without any live BoardDocs request:
+     * {archive.path}/{district}/{visibility}/{committee}/meetings.json
+     */
+    public static function archiveMeetingsPath(array $config, string $site, string $committeeName): string
+    {
+        return self::build(
+            (string) ($config['archive']['path'] ?? 'boarddocs-public'),
+            $config,
+            $site,
+            $committeeName,
+            'meetings.json',
+        );
+    }
+
+    /**
      * Strip the configured output base from a full storage path so it matches the
      * "path" field used in index.jsonl. Paths rooted at a different base (e.g. the
      * archive-based attachments directory) are returned unchanged, since they aren't

@@ -2,17 +2,18 @@
 
 namespace BoardDocsScraper\Console;
 
-use BoardDocsScraper\Ai\VectorStoreSync;
-use BoardDocsScraper\BoardDocsManager;
-use BoardDocsScraper\Support\OutputPaths;
 use Illuminate\Console\Command;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 
 /**
- * Scans a public BoardDocs site and exports self-contained meeting PDFs plus the
- * JSONL search index. Mirrors export_scope() from the original Python exporter.
+ * Scans a public BoardDocs site end-to-end: runs `boarddocs:prefetch` (fetch
+ * agenda HTML + attachments into the archive) followed by `boarddocs:build`
+ * (render PDFs + the JSONL search index from the archive). Equivalent to
+ * running both yourself, but as one command for the common case where
+ * nothing is currently blocking you.
+ *
+ * If prefetch gets blocked partway through (BoardDocs returning 403), the
+ * build step still runs and produces PDFs for whatever was already
+ * archived — from this run or an earlier one.
  */
 class ScanCommand extends Command
 {
@@ -24,205 +25,71 @@ class ScanCommand extends Command
         {--limit= : Maximum meetings per committee}
         {--no-attachments : Do not download or merge attachments}
         {--engine= : Override the PDF engine (tcpdf|browsershot)}
-        {--refresh-recent-days= : Re-export existing PDFs for meetings within N days}
-        {--fresh : Bypass the committee/meeting cache}
-        {--memory-limit= : Raise PHP memory_limit for this run (e.g. 512M, 1G, -1 for unlimited)}
-        {--dry-run : List what would be exported without writing anything}';
+        {--refresh-recent-days= : Re-build existing PDFs for meetings within N days}
+        {--fresh : Bypass the committee/meeting cache during prefetch}
+        {--memory-limit= : Raise PHP memory_limit for the build step (e.g. 512M, 1G, -1 for unlimited)}
+        {--dry-run : List what would be built without prefetching or writing anything}';
 
-    protected $description = 'Scan a public BoardDocs site and export meeting PDFs + search index.';
+    protected $description = 'Scan a public BoardDocs site: prefetch into the archive, then build meeting PDFs + search index.';
 
-    public function handle(BoardDocsManager $manager): int
+    public function handle(): int
     {
-        $config = $manager->config();
-
-        $this->applyMemoryLimit(
-            $this->option('memory-limit') ?? ($config['scan']['memory_limit'] ?? null)
-        );
-
-        $siteName = $this->option('site') ?: $config['site'];
-
-        $overrides = [];
-        if ($engine = $this->option('engine')) {
-            $overrides['pdf']['engine'] = $engine;
+        $shared = [];
+        if ($site = $this->option('site')) {
+            $shared['--site'] = $site;
+        }
+        if ($committees = $this->option('committee')) {
+            $shared['--committee'] = $committees;
+        }
+        if ($since = $this->option('since')) {
+            $shared['--since'] = $since;
+        }
+        if ($until = $this->option('until')) {
+            $shared['--until'] = $until;
+        }
+        if ($limit = $this->option('limit')) {
+            $shared['--limit'] = $limit;
         }
         if ($this->option('no-attachments')) {
-            $overrides['pdf']['self_contained'] = false;
-        }
-        if ($this->option('fresh')) {
-            $overrides['cache']['enabled'] = false;
+            $shared['--no-attachments'] = true;
         }
 
-        $site = $manager->site($siteName, $overrides);
-        $disk = Storage::disk($config['output']['disk'] ?? 'local');
-        $refreshDays = (int) ($this->option('refresh-recent-days') ?? $config['scan']['refresh_recent_days'] ?? 30);
-
-        $committeeIds = array_map('strtolower', (array) $this->option('committee'));
-        $since = $this->option('since');
-        $until = $this->option('until');
-        $limit = $this->option('limit') !== null ? (int) $this->option('limit') : null;
-
-        $committees = $site->committees();
-        if (! empty($committeeIds)) {
-            $committees = $committees->filter(
-                fn ($c) => in_array(strtolower($c->committeeId), $committeeIds, true)
-            )->values();
-        }
-
-        if ($committees->isEmpty()) {
-            $this->warn("No committees found for site '{$siteName}'.");
-
-            return self::FAILURE;
-        }
-
-        $index = $manager->indexBuilder()->load();
-        $vectorSync = new VectorStoreSync($config);
-        $vectorSync = $vectorSync->enabled() ? $vectorSync : null;
-        $written = $skipped = $failed = $vectorSynced = 0;
-
-        foreach ($committees as $committee) {
-            $this->info("Committee: {$committee->name} ({$committee->committeeId})");
-
-            $meetings = $committee->meetings();
-            if ($since) {
-                $needle = str_replace('-', '', $since);
-                $meetings = $meetings->filter(fn ($m) => $m->numberdate() >= $needle);
-            }
-            if ($until) {
-                $needle = str_replace('-', '', $until);
-                $meetings = $meetings->filter(fn ($m) => $m->numberdate() <= $needle);
-            }
-            if ($limit !== null) {
-                $meetings = $meetings->take($limit);
-            }
-
-            foreach ($meetings as $meeting) {
-                $rel = OutputPaths::meetingPath($config, $siteName, $committee->name, $meeting->date());
-
-                if ($disk->exists($rel) && ! $this->withinRecent($meeting->date(), $refreshDays)) {
-                    if ($vectorSync !== null && ! $this->option('dry-run')) {
-                        $existing = $index->get(OutputPaths::relativeToBase($config, $rel));
-                        if ($existing !== null && empty($existing['vector_document_id'])) {
-                            $index->put($vectorSync->sync($existing, $rel));
-                            $vectorSynced++;
-                        }
-                    }
-
-                    $this->line("  skip existing {$meeting->date()}");
-                    $skipped++;
-
-                    continue;
-                }
-
-                if ($this->option('dry-run')) {
-                    $this->line("  would export {$meeting->date()} — ".Str::limit($meeting->name(), 60));
-
-                    continue;
-                }
-
-                try {
-                    $agenda = $meeting->agenda();
-                    if ($this->option('no-attachments')) {
-                        $agenda->withoutAttachments();
-                    }
-
-                    $pdf = $agenda->toPdf();
-                    $pdf->save($rel);
-
-                    $entry = $pdf->indexEntry($rel);
-
-                    if ($vectorSync !== null) {
-                        $entry = $vectorSync->sync($entry, $rel, $index->get($entry['path']));
-                        $vectorSynced++;
-                    }
-
-                    $index->put($entry);
-                    $written++;
-
-                    $this->info(sprintf(
-                        '  wrote %s (%d pages, %d attachments)',
-                        $rel,
-                        $pdf->pageCount(),
-                        count($pdf->attachments()),
-                    ));
-                } catch (\Throwable $e) {
-                    $failed++;
-                    $this->error("  failed {$meeting->date()}: ".$e->getMessage());
-                }
-            }
-        }
-
+        // A dry run reports what would be built without making any BoardDocs
+        // request of its own, so prefetching (which only ever makes live
+        // requests) is skipped entirely rather than passed --dry-run itself.
         if (! $this->option('dry-run')) {
-            $path = $index->save();
-            $this->info("Index written: {$path} ({$index->count()} meetings)");
+            $prefetchOptions = $shared;
+            if ($this->option('fresh')) {
+                $prefetchOptions['--fresh'] = true;
+            }
+            // So a recent meeting whose archive was lost still gets
+            // refreshed before build tries to rebuild it under the same
+            // --refresh-recent-days window.
+            if ($refreshDays = $this->option('refresh-recent-days')) {
+                $prefetchOptions['--refresh-recent-days'] = $refreshDays;
+            }
+
+            if ($this->call('boarddocs:prefetch', $prefetchOptions) !== self::SUCCESS) {
+                $this->warn('boarddocs:prefetch stopped early — continuing to build whatever is already archived.');
+            }
+
+            $this->newLine();
         }
 
-        $this->newLine();
-        $this->info($vectorSync !== null
-            ? "Done. wrote={$written} skipped={$skipped} failed={$failed} vector_synced={$vectorSynced}"
-            : "Done. wrote={$written} skipped={$skipped} failed={$failed}");
-
-        return self::SUCCESS;
-    }
-
-    protected function withinRecent(string $isoDate, int $days): bool
-    {
-        if ($days <= 0) {
-            return false;
+        $buildOptions = $shared;
+        if ($engine = $this->option('engine')) {
+            $buildOptions['--engine'] = $engine;
+        }
+        if ($refreshDays = $this->option('refresh-recent-days')) {
+            $buildOptions['--refresh-recent-days'] = $refreshDays;
+        }
+        if ($memoryLimit = $this->option('memory-limit')) {
+            $buildOptions['--memory-limit'] = $memoryLimit;
+        }
+        if ($this->option('dry-run')) {
+            $buildOptions['--dry-run'] = true;
         }
 
-        try {
-            return Carbon::parse($isoDate)->gte(Carbon::today()->subDays($days));
-        } catch (\Throwable $e) {
-            return false;
-        }
-    }
-
-    /**
-     * Raise PHP's memory_limit for this scan. PDF assembly holds every
-     * attachment's bytes in memory while TCPDF/FPDI buffer the merged document,
-     * so the default 128M is easily exhausted. Only ever raises the ceiling so
-     * an already-generous environment limit is never reduced.
-     */
-    protected function applyMemoryLimit(?string $limit): void
-    {
-        $limit = $limit !== null ? trim($limit) : '';
-        if ($limit === '') {
-            return;
-        }
-
-        $target = $this->memoryLimitToBytes($limit);
-        $current = $this->memoryLimitToBytes((string) ini_get('memory_limit'));
-
-        // -1 is unlimited (treated as the largest value); never lower the limit.
-        if ($target !== -1 && $current === -1) {
-            return;
-        }
-        if ($target !== -1 && $current !== -1 && $target <= $current) {
-            return;
-        }
-
-        ini_set('memory_limit', $limit);
-    }
-
-    /**
-     * Convert an ini memory shorthand ("512M", "1G", "-1") into a byte count.
-     * Returns -1 for the unlimited sentinel.
-     */
-    protected function memoryLimitToBytes(string $value): int
-    {
-        $value = trim($value);
-        if ($value === '' || $value === '-1') {
-            return $value === '-1' ? -1 : 0;
-        }
-
-        $number = (int) $value;
-        $unit = strtolower(substr($value, -1));
-
-        return match ($unit) {
-            'g' => $number * 1024 * 1024 * 1024,
-            'm' => $number * 1024 * 1024,
-            'k' => $number * 1024,
-            default => (int) $value,
-        };
+        return $this->call('boarddocs:build', $buildOptions);
     }
 }

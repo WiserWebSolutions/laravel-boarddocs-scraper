@@ -109,13 +109,12 @@ return [
     | deliberately a different tree than output.path, which only ever holds
     | what we produce ourselves.
     |
-    | This also doubles as a resilience cache for meetings that haven't been
-    | exported yet: `boarddocs:scan` checks here before making a live request,
-    | so a run that starts getting 403s partway through can finish building
-    | PDFs for meetings it already fetched material for, from disk —
-    | reconnecting to BoardDocs only for whatever individual file turns out to
-    | be missing. `php artisan boarddocs:prefetch` warms it ahead of time
-    | without rendering any PDFs.
+    | This also doubles as a resilience mechanism: `boarddocs:build` only ever
+    | reads from here (it never makes a BoardDocs request of its own), so a
+    | `boarddocs:prefetch` run that gets 403'd partway through still leaves
+    | `boarddocs:build` able to produce PDFs for whatever it already fetched.
+    | `boarddocs:scan` runs prefetch then build together; run them separately
+    | to prefetch now and build later, or from a different machine entirely.
     |
     */
 
@@ -199,8 +198,9 @@ return [
     |                either way. Requires `composer require laravel/ai`.
     |
     | vector_store.id: the store ID returned by Laravel\Ai\Stores::create().
-    |                   boarddocs:scan uploads each exported meeting PDF into
-    |                   this store (with path/committee/date metadata) whenever
+    |                   boarddocs:build (and therefore boarddocs:scan, which
+    |                   runs it) uploads each exported meeting PDF into this
+    |                   store (with path/committee/date metadata) whenever
     |                   search_driver is "vector".
     |
     */

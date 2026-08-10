@@ -3,17 +3,21 @@
 namespace BoardDocsScraper\Console;
 
 use BoardDocsScraper\BoardDocsManager;
+use BoardDocsScraper\Support\Archive;
 use BoardDocsScraper\Support\OutputPaths;
 use Illuminate\Console\Command;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 
 /**
  * Pre-downloads (into the archive) every not-yet-exported meeting's agenda
- * HTML and attachment files, without rendering any PDFs. Meant to be run
- * while BoardDocs is still reachable so a later `boarddocs:scan` can build
- * those meetings' PDFs from disk, even if BoardDocs starts returning 403s
- * before the scan gets to them.
+ * HTML and attachment files, without rendering any PDFs — including the
+ * committee and meeting lists themselves, so `boarddocs:build` can later
+ * enumerate everything to build without making any BoardDocs request of its
+ * own. Meant to be run while BoardDocs is still reachable so `boarddocs:build`
+ * (or `boarddocs:scan`, which runs both) can produce those meetings' PDFs
+ * from disk, even if BoardDocs starts returning 403s before it gets to them.
  *
  * Stops immediately on the first 403 — once BoardDocs starts blocking this
  * server, every subsequent request is expected to fail the same way, so
@@ -28,6 +32,7 @@ class PrefetchCommand extends Command
         {--until= : Only meetings on/before this date (YYYY-MM-DD)}
         {--limit= : Maximum meetings per committee}
         {--no-attachments : Only cache agenda HTML, not attachment files}
+        {--refresh-recent-days= : Also refresh the archive for meetings within N days, even if a PDF already exists}
         {--fresh : Bypass the committee/meeting cache}';
 
     protected $description = 'Pre-download BoardDocs agenda HTML + attachments into the archive, without rendering PDFs.';
@@ -50,14 +55,34 @@ class PrefetchCommand extends Command
         }
 
         $site = $manager->site($siteName, $overrides);
+        $archive = new Archive($config);
         $disk = Storage::disk($config['output']['disk'] ?? 'local');
+        $refreshDays = (int) ($this->option('refresh-recent-days') ?? $config['scan']['refresh_recent_days'] ?? 30);
 
         $committeeIds = array_map('strtolower', (array) $this->option('committee'));
         $since = $this->option('since');
         $until = $this->option('until');
         $limit = $this->option('limit') !== null ? (int) $this->option('limit') : null;
 
-        $committees = $site->committees();
+        // Archive the full, unfiltered committee list every run (not just the
+        // --committee subset being processed), so boarddocs:build always sees
+        // everything currently on the site regardless of how this particular
+        // prefetch was scoped.
+        try {
+            $allCommittees = $site->committees();
+        } catch (RequestException $e) {
+            if ($e->response->status() === 403) {
+                $this->error('BoardDocs is blocking this server (HTTP 403) while discovering committees — stopping early.');
+                $this->summarize(0, 0, 1);
+
+                return self::FAILURE;
+            }
+
+            throw $e;
+        }
+        $archive->putCommittees($siteName, $allCommittees->map(fn ($c) => $c->toArray())->all());
+
+        $committees = $allCommittees;
         if (! empty($committeeIds)) {
             $committees = $committees->filter(
                 fn ($c) => in_array(strtolower($c->committeeId), $committeeIds, true)
@@ -75,7 +100,24 @@ class PrefetchCommand extends Command
         foreach ($committees as $committee) {
             $this->info("Committee: {$committee->name} ({$committee->committeeId})");
 
-            $meetings = $committee->meetings();
+            // Same reasoning as above: archive this committee's full meeting
+            // list unfiltered, then apply --since/--until/--limit only to
+            // decide what to actually prefetch material for right now.
+            try {
+                $allMeetings = $committee->meetings();
+            } catch (RequestException $e) {
+                if ($e->response->status() === 403) {
+                    $this->error("  BoardDocs is blocking this server (HTTP 403) while listing meetings for {$committee->name} — stopping early.");
+                    $this->summarize($cached, $skipped, $failed);
+
+                    return self::FAILURE;
+                }
+
+                throw $e;
+            }
+            $archive->putMeetings($siteName, $committee->name, $allMeetings->map(fn ($m) => $m->toArray())->all());
+
+            $meetings = $allMeetings;
             if ($since) {
                 $needle = str_replace('-', '', $since);
                 $meetings = $meetings->filter(fn ($m) => $m->numberdate() >= $needle);
@@ -91,7 +133,7 @@ class PrefetchCommand extends Command
             foreach ($meetings as $meeting) {
                 $rel = OutputPaths::meetingPath($config, $siteName, $committee->name, $meeting->date());
 
-                if ($disk->exists($rel)) {
+                if ($disk->exists($rel) && ! $this->withinRecent($meeting->date(), $refreshDays)) {
                     $this->line("  skip already exported {$meeting->date()}");
                     $skipped++;
 
@@ -136,5 +178,18 @@ class PrefetchCommand extends Command
     {
         $this->newLine();
         $this->info("Done. cached={$cached} skipped={$skipped} failed={$failed}");
+    }
+
+    protected function withinRecent(string $isoDate, int $days): bool
+    {
+        if ($days <= 0) {
+            return false;
+        }
+
+        try {
+            return Carbon::parse($isoDate)->gte(Carbon::today()->subDays($days));
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 }

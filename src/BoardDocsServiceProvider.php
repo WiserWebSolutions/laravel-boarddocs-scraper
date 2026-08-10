@@ -2,6 +2,7 @@
 
 namespace BoardDocsScraper;
 
+use BoardDocsScraper\Console\BuildCommand;
 use BoardDocsScraper\Console\CreateVectorStoreCommand;
 use BoardDocsScraper\Console\PrefetchCommand;
 use BoardDocsScraper\Console\ScanCommand;
@@ -37,6 +38,7 @@ class BoardDocsServiceProvider extends ServiceProvider
                 SearchCommand::class,
                 CreateVectorStoreCommand::class,
                 PrefetchCommand::class,
+                BuildCommand::class,
             ]);
         }
     }

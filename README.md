@@ -111,18 +111,31 @@ Two rendering engines are available (configure `boarddocs.pdf.engine`):
 
 ## Scanning & the search index
 
+`boarddocs:scan` is `boarddocs:prefetch` followed by `boarddocs:build`, run as one command for
+the common case where nothing is currently blocking you:
+
+| Command | Talks to BoardDocs? | What it does |
+|---------|---------------------|--------------|
+| `boarddocs:prefetch` | Yes, always | Fetches committee/meeting lists, agenda HTML, and attachment files into the archive. Never renders a PDF. |
+| `boarddocs:build` | **Never** | Renders meeting PDFs + `index.jsonl` strictly from what's already in the archive. Skips (with a clear message) any meeting whose archive is incomplete, instead of falling back to a live request. |
+| `boarddocs:scan` | Yes (via prefetch) | Runs prefetch, then build. If prefetch gets blocked partway through, build still runs and produces PDFs for whatever was already archived. |
+
 ```bash
-# Export a whole site (all committees), updating output/index.jsonl
+# The common case: fetch + build a whole site in one go
 php artisan boarddocs:scan --site=pa/phoe
 
-# Scope it
+# Scope it (options apply to whichever step(s) they're relevant to)
 php artisan boarddocs:scan --site=pa/phoe --committee=CTNNDT5F7A3B --limit=5 --since=2024-01-01 --until=2024-12-31
-php artisan boarddocs:scan --dry-run                    # list without downloading
+php artisan boarddocs:scan --dry-run                    # report what build would do; skips prefetch entirely
 php artisan boarddocs:scan --no-attachments             # agenda-only PDFs
 php artisan boarddocs:scan --engine=browsershot
-php artisan boarddocs:scan --fresh                      # bypass the committee/meeting cache
-php artisan boarddocs:scan --refresh-recent-days=14      # re-export recent meetings even if a PDF exists
-php artisan boarddocs:scan --memory-limit=512M           # raise memory_limit for this run only
+php artisan boarddocs:scan --fresh                      # bypass the committee/meeting cache during prefetch
+php artisan boarddocs:scan --refresh-recent-days=14      # refresh + re-build recent meetings even if a PDF exists
+php artisan boarddocs:scan --memory-limit=512M           # raise memory_limit for the build step
+
+# Or run each step yourself
+php artisan boarddocs:prefetch --site=pa/phoe            # fetch only, no PDFs
+php artisan boarddocs:build --site=pa/phoe               # build only, zero BoardDocs requests
 
 # Search the exported index
 php artisan boarddocs:search budget transportation --committee=Finance --limit=10
@@ -145,32 +158,36 @@ you want the generated PDFs served directly.
 
 ### Surviving BoardDocs blocking your server mid-scan
 
-BoardDocs will eventually 403 a server that scans it too aggressively. To make that
-survivable, every meeting's agenda HTML and attachment files are archived the first time
-they're fetched — `boarddocs:scan` checks the archive transparently for meetings that
-haven't been exported yet, before falling back to a live request. Once a meeting's PDF
-has actually been exported, the cache-hit shortcut no longer matters for it, but the
-archived files themselves stay put either way.
+BoardDocs will eventually 403 a server that scans it too aggressively. `boarddocs:prefetch`
+and `boarddocs:build` exist specifically to make that survivable, by splitting "talk to
+BoardDocs" from "produce the PDF" into two independent steps:
 
-Run a dedicated prefetch pass — e.g. on a schedule, or as your own retry after a 403 —
-to warm the archive ahead of time without rendering any PDFs:
+- `boarddocs:prefetch` fetches the committee list, each committee's meeting list, and every
+  not-yet-exported meeting's agenda HTML + attachment files into the archive — nothing else.
+  It stops immediately on the first 403 it hits, since every request after that is expected
+  to fail the same way.
+- `boarddocs:build` never makes a BoardDocs request. It builds PDFs straight from whatever
+  is already archived. A meeting whose archive is complete builds fine even while BoardDocs
+  is actively blocking you; a meeting whose archive is missing something is skipped with a
+  clear message (run prefetch again to fill the gap) instead of silently reaching out live.
+
+Run prefetch on its own — e.g. on a schedule, or as your own retry after a 403 — to warm the
+archive ahead of time, then build (or `boarddocs:scan`, later, whenever) picks up from there:
 
 ```bash
 php artisan boarddocs:prefetch --site=pa/phoe
-php artisan boarddocs:prefetch --no-attachments   # only cache agenda HTML
-```
+php artisan boarddocs:prefetch --no-attachments   # only fetch agenda HTML
 
-`boarddocs:prefetch` stops immediately on the first 403 it hits, since every request
-after that is expected to fail the same way. A later `boarddocs:scan` run then builds
-each archived meeting's PDF straight from disk — reconnecting to BoardDocs only for an
-individual attachment that turns out to be missing from the archive, not the whole meeting.
+php artisan boarddocs:build --site=pa/phoe        # builds whatever prefetch already archived
+```
 
 #### If it's your deployed server's IP getting blocked
 
 Running `boarddocs:prefetch` on the same server that's already blocked doesn't help — it
 hits the same wall. What actually helps is running it from a different network, against
-the *same* archive the deployed server reads from. Point `archive.disk` (and `output.disk`,
-if you want) at a shared disk instead of `local` — any Flysystem-backed disk works, e.g. S3:
+the *same* archive the deployed server's `boarddocs:build` reads from. Point `archive.disk`
+(and `output.disk`, if you want) at a shared disk instead of `local` — any Flysystem-backed
+disk works, e.g. S3:
 
 ```dotenv
 BOARDDOCS_ARCHIVE_DISK=s3
@@ -188,8 +205,8 @@ different cloud box, anywhere with a clean IP). Then:
 # From the unblocked machine, against the shared disk:
 php artisan boarddocs:prefetch --site=pa/phoe
 
-# On the deployed server, whenever you like — reads the archive first:
-php artisan boarddocs:scan --site=pa/phoe
+# On the deployed server, whenever you like — makes zero BoardDocs requests:
+php artisan boarddocs:build --site=pa/phoe
 ```
 
 No package code cares which disk `archive.disk` points to — `Archive` only ever calls
@@ -210,7 +227,7 @@ Meetings whose PDF already exists are skipped, except those within
 ## Laravel AI SDK integration
 
 The package ships ready-to-use [AI SDK tools](https://laravel.com/docs/13.x/ai-sdk) so an
-agent can search and consume the archive. Install the SDK to use them:
+agent can search and consume the exported meeting PDFs/index. Install the SDK to use them:
 
 ```bash
 composer require laravel/ai

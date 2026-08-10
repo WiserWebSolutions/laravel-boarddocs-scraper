@@ -202,7 +202,8 @@ class Agenda
     }
 
     /**
-     * Render the (optionally self-contained) meeting PDF.
+     * Render the (optionally self-contained) meeting PDF, fetching (or
+     * reusing from the archive) whatever agenda HTML/attachments are needed.
      */
     public function toPdf(): MeetingPdf
     {
@@ -218,6 +219,47 @@ class Agenda
             }
         }
 
+        return $this->renderPdf($printHtml, $committee, $saved);
+    }
+
+    /**
+     * Render the meeting PDF strictly from the archive — never making a live
+     * BoardDocs request. Throws if the archive is missing this meeting's
+     * agenda HTML, its attachment manifest, or an individual attachment file;
+     * run `boarddocs:prefetch` first to fill the gap. Used by
+     * `boarddocs:build`.
+     */
+    public function toPdfFromArchive(): MeetingPdf
+    {
+        $committee = $this->meeting->committee();
+        $printHtml = $this->archivedHtmlOrFail($committee);
+
+        $saved = [];
+        if ($this->withAttachments) {
+            $saved = $this->archivedAttachmentsOrFail($committee);
+
+            if ($this->config['output']['save_attachments'] ?? true) {
+                $this->persistAttachments($saved);
+            }
+        }
+
+        return $this->renderPdf($printHtml, $committee, $saved);
+    }
+
+    /**
+     * Render and persist the PDF to the configured (or given) disk. Returns the
+     * relative storage path.
+     */
+    public function save(?string $path = null, ?string $disk = null): string
+    {
+        return $this->toPdf()->save($path, $disk);
+    }
+
+    /**
+     * @param  \BoardDocsScraper\Data\SavedAttachment[]  $saved
+     */
+    protected function renderPdf(string $printHtml, Committee $committee, array $saved): MeetingPdf
+    {
         $document = new MeetingDocument(
             agendaHtml: $printHtml,
             baseUrl: $this->client->baseUrl(),
@@ -236,12 +278,72 @@ class Agenda
     }
 
     /**
-     * Render and persist the PDF to the configured (or given) disk. Returns the
-     * relative storage path.
+     * html(), but fails instead of falling back to a live BoardDocs request.
      */
-    public function save(?string $path = null, ?string $disk = null): string
+    protected function archivedHtmlOrFail(Committee $committee): string
     {
-        return $this->toPdf()->save($path, $disk);
+        if ($this->printHtml !== null) {
+            return $this->printHtml;
+        }
+
+        $archive = $this->archive();
+        $html = $archive?->getAgendaHtml($committee->site()->name(), $committee->name, $this->meeting->date());
+        if ($html === null) {
+            throw new BoardDocsException(
+                "Agenda HTML for {$this->meeting->date()} is missing from the archive — run boarddocs:prefetch first."
+            );
+        }
+
+        return $this->printHtml = $html;
+    }
+
+    /**
+     * collectAttachments(), but fails instead of falling back to a live
+     * BoardDocs request for a manifest entry, or a meeting never prefetched.
+     *
+     * @return \BoardDocsScraper\Data\SavedAttachment[]
+     */
+    protected function archivedAttachmentsOrFail(Committee $committee): array
+    {
+        $archive = $this->archive();
+        $site = $committee->site()->name();
+        $date = $this->meeting->date();
+
+        $manifest = $archive?->getManifest($site, $committee->name, $date);
+        if ($manifest === null) {
+            throw new BoardDocsException(
+                "Attachments for {$date} are missing from the archive — run boarddocs:prefetch first."
+            );
+        }
+
+        $tempDir = $this->makeTempDir();
+        $saved = [];
+
+        foreach ($manifest as $record) {
+            $bookmark = (string) ($record['bookmark'] ?? '');
+            if ($bookmark === '') {
+                continue;
+            }
+
+            $localPath = $tempDir.DIRECTORY_SEPARATOR.$bookmark;
+
+            if (! $archive->copyAttachmentTo($site, $committee->name, $date, $bookmark, $localPath)) {
+                throw new BoardDocsException(
+                    "Attachment '{$bookmark}' for {$date} is missing from the archive — run boarddocs:prefetch first."
+                );
+            }
+
+            $saved[] = new SavedAttachment(
+                bookmark: $bookmark,
+                path: $localPath,
+                resolvedUrl: (string) ($record['resolvedUrl'] ?? $record['href'] ?? ''),
+                href: (string) ($record['href'] ?? ''),
+                fileUnique: (string) ($record['fileUnique'] ?? ''),
+                itemUnique: (string) ($record['itemUnique'] ?? ''),
+            );
+        }
+
+        return $saved;
     }
 
     /**
