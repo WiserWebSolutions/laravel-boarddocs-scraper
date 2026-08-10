@@ -165,6 +165,37 @@ after that is expected to fail the same way. A later `boarddocs:scan` run then b
 each cached meeting's PDF straight from disk — reconnecting to BoardDocs only for an
 individual attachment that turns out to be missing from the cache, not the whole meeting.
 
+#### If it's your deployed server's IP getting blocked
+
+Running `boarddocs:prefetch` on the same server that's already blocked doesn't help — it
+hits the same wall. What actually helps is running it from a different network, against
+the *same* cache the deployed server reads from. Point `raw_cache.disk` (and `output.disk`,
+if you want) at a shared disk instead of `local` — any Flysystem-backed disk works, e.g. S3:
+
+```dotenv
+BOARDDOCS_RAW_CACHE_DISK=s3
+```
+
+```bash
+composer require league/flysystem-aws-s3-v3
+```
+
+Configure an `s3` disk in `config/filesystems.php` with the same bucket/credentials on
+both the deployed server and whatever machine you'll run `prefetch` from (your laptop, a
+different cloud box, anywhere with a clean IP). Then:
+
+```bash
+# From the unblocked machine, against the shared disk:
+php artisan boarddocs:prefetch --site=pa/phoe
+
+# On the deployed server, whenever you like — reads the cache first:
+php artisan boarddocs:scan --site=pa/phoe
+```
+
+No package code cares which disk `raw_cache.disk` points to — `RawCache` only ever calls
+`exists()`/`get()`/`put()` on it, so any Laravel filesystem disk works without further
+changes.
+
 `index.jsonl` has the same shape as the original project (one meeting per line):
 
 ```json
