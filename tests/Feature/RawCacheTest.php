@@ -61,6 +61,26 @@ function fakeBoardDocsForRawCache(): void
     ]);
 }
 
+it('keeps our generated output separate from BoardDocs\' raw downloaded files', function () {
+    Storage::fake('local');
+    fakeBoardDocsForRawCache();
+
+    $pdf = BoardDocs()->site('pa/phoe')
+        ->committees()->first()
+        ->agenda()->withAttachments()
+        ->toPdf();
+
+    $config = app('boarddocs')->config();
+    $pdfPath = $pdf->save();
+
+    // What we produced (the merged PDF) lives under output.path.
+    expect($pdfPath)->toStartWith(rtrim($config['output']['path'], '/').'/');
+
+    // What BoardDocs gave us, unmodified, lives under the separate raw_cache.path.
+    expect($pdf->attachmentsDir())->toStartWith(rtrim($config['raw_cache']['path'], '/').'/');
+    Storage::disk('local')->assertExists($pdf->attachmentsDir().'/Personnel Report.pdf');
+});
+
 it('prefetches agenda html and attachment bytes into the raw cache without rendering a pdf', function () {
     Storage::fake('local');
     fakeBoardDocsForRawCache();

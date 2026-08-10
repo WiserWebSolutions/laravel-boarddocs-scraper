@@ -69,7 +69,7 @@ $agenda->text();           // plain-text agenda summary
 $pdf = $agenda->withAttachments()->toPdf();
 $pdf->pageCount();                     // int
 $pdf->attachments();                   // SavedAttachment[]
-$pdf->save();                          // -> "boarddocs/pa-phoe/Public/<committee>/<date>-Agenda.pdf"
+$pdf->save();                          // -> "boarddocs-private/pa-phoe/Public/<committee>/<date>-Agenda.pdf"
 $pdf->save('custom/path.pdf', 'r2');   // any Laravel disk
 return $pdf->response();               // inline PDF HTTP response
 ```
@@ -129,14 +129,28 @@ php artisan boarddocs:search budget transportation --committee=Finance --limit=1
 php artisan boarddocs:search budget --json               # machine-readable output
 ```
 
+### Two on-disk trees: what BoardDocs gave us vs. what we produce
+
+Everything is split across two directories (on the `local` disk by default, i.e. under
+`storage/app/private`, since that's already the `local` disk's root in Laravel 11+):
+
+| Tree | Config | Default path | Contents |
+|------|--------|---------------|----------|
+| What BoardDocs gave us, unmodified | `raw_cache.path` | `boarddocs-public` | Raw print-agenda HTML + every downloaded attachment file, as originally fetched |
+| What we produce | `output.path` | `boarddocs-private` | The merged/rewritten agenda PDF + `index.jsonl` |
+
+The names describe provenance, not web visibility — both live under Laravel's private
+`local` disk by default; point `output.disk`/`raw_cache.disk` at a public disk yourself if
+you want the generated PDFs served directly.
+
 ### Surviving BoardDocs blocking your server mid-scan
 
 BoardDocs will eventually 403 a server that scans it too aggressively. To make that
-survivable, every not-yet-exported meeting's agenda HTML and attachment files are cached
-to disk (`boarddocs.raw_cache`, default `private/boarddocs` on the `local` disk) the first
-time they're fetched — `boarddocs:scan` uses this cache transparently, before falling
-back to a live request. Once a meeting's PDF has actually been exported, its cache entry
-is irrelevant and ignored from then on.
+survivable, every meeting's agenda HTML and attachment files are cached to the
+`raw_cache` tree the first time they're fetched — `boarddocs:scan` uses this cache
+transparently for meetings that haven't been exported yet, before falling back to a live
+request. Once a meeting's PDF has actually been exported, the cache-hit shortcut no
+longer matters for it, but the archived files themselves stay put either way.
 
 Run a dedicated prefetch pass — e.g. on a schedule, or as your own retry after a 403 —
 to warm the cache ahead of time without rendering any PDFs:
@@ -250,7 +264,7 @@ See `config/boarddocs.php`. Highlights:
 | `http.debug` | Log every request/response (status, timing, headers/body) — see [Troubleshooting](#troubleshooting) |
 | `cache.store`, `cache.ttl` | Cache store + TTL for committee/meeting/agenda data |
 | `output.disk`, `output.path`, `output.index` | Where PDFs and `index.jsonl` are written |
-| `raw_cache.enabled`, `raw_cache.disk`, `raw_cache.path` | Where not-yet-exported meetings' raw agenda HTML/attachments are cached (see [Surviving BoardDocs blocking your server mid-scan](#surviving-boarddocs-blocking-your-server-mid-scan)) |
+| `raw_cache.enabled`, `raw_cache.disk`, `raw_cache.path` | Where BoardDocs' raw agenda HTML/attachments are kept, unmodified (see [Two on-disk trees](#two-on-disk-trees-what-boarddocs-gave-us-vs-what-we-produce)) |
 | `pdf.engine` | `tcpdf` or `browsershot` |
 | `pdf.self_contained`, `pdf.remap_links`, `pdf.embed_non_pdf` | Self-contained PDF behavior |
 | `scan.refresh_recent_days` | Re-export window for recent meetings |

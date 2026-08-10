@@ -68,21 +68,29 @@ return [
     | Output
     |--------------------------------------------------------------------------
     |
-    | Where exported meeting PDFs and the JSONL search index are written. "disk"
-    | is any Laravel filesystem disk. The on-disk layout mirrors the original
-    | project: {path}/{district}/Public/{committee}/{YYYY-MM-DD}-Agenda.pdf
+    | Where the files *we produce* are written — the merged/rewritten agenda
+    | PDF and the JSONL search index. "disk" is any Laravel filesystem disk.
+    | Default path "boarddocs-private" resolves to
+    | storage/app/private/boarddocs-private on the default "local" disk
+    | (whose root is already storage/app/private in Laravel 11+). The on-disk
+    | layout mirrors the original project: {path}/{district}/Public/{committee}/{YYYY-MM-DD}-Agenda.pdf
+    |
+    | Raw material downloaded from BoardDocs itself — the print-agenda HTML
+    | and every attachment file, unmodified — lives in the separate raw_cache
+    | tree below instead, so our own generated output never mixes with
+    | BoardDocs' original files.
     |
     */
 
     'output' => [
         'disk' => env('BOARDDOCS_DISK', 'local'),
-        'path' => env('BOARDDOCS_OUTPUT_PATH', 'boarddocs'),
-        'index' => env('BOARDDOCS_INDEX_PATH', 'boarddocs/index.jsonl'),
+        'path' => env('BOARDDOCS_OUTPUT_PATH', 'boarddocs-private'),
+        'index' => env('BOARDDOCS_INDEX_PATH', 'boarddocs-private/index.jsonl'),
         'visibility' => 'Public',
 
         // Archive each meeting's raw downloaded attachments (as originally
-        // fetched from BoardDocs) alongside the merged agenda PDF, under a
-        // "{date}-Attachments/" directory next to it. Independent of
+        // fetched from BoardDocs, unmodified) into the raw_cache tree below,
+        // under a "{date}-Attachments/" directory. Independent of
         // pdf.self_contained/embed_non_pdf, which only control what gets
         // merged into the PDF itself — this keeps the untouched source files
         // for reference even if they're also merged in.
@@ -94,26 +102,27 @@ return [
     | Raw file cache
     |--------------------------------------------------------------------------
     |
-    | Persists the raw print-agenda HTML and attachment files BoardDocs
-    | returns for a meeting that hasn't been exported yet, mirroring
-    | output.*'s layout but rooted at "path" below (default
-    | "private/boarddocs", i.e. storage/app/private/boarddocs on the default
-    | "local" disk). This lets a scan finish building PDFs for meetings it
-    | already fetched material for, from disk, if BoardDocs starts returning
-    | 403s partway through a run — reconnecting only for whatever individual
-    | file turns out to be missing from the cache. `php artisan
-    | boarddocs:prefetch` warms this cache ahead of time without rendering
-    | any PDFs; `boarddocs:scan` uses it transparently either way.
+    | Where everything downloaded from BoardDocs, unmodified, is kept — the
+    | raw print-agenda HTML and every attachment file — mirroring output.*'s
+    | layout but rooted at "path" below (default "boarddocs-public", i.e.
+    | storage/app/private/boarddocs-public on the default "local" disk) —
+    | deliberately a different tree than output.path, which only ever holds
+    | what we produce ourselves.
     |
-    | Once a meeting's PDF actually exists, nothing here matters for it
-    | anymore, so this only ever holds material for pending meetings.
+    | This also doubles as a resilience cache for meetings that haven't been
+    | exported yet: `boarddocs:scan` checks here before making a live request,
+    | so a run that starts getting 403s partway through can finish building
+    | PDFs for meetings it already fetched material for, from disk —
+    | reconnecting to BoardDocs only for whatever individual file turns out to
+    | be missing. `php artisan boarddocs:prefetch` warms it ahead of time
+    | without rendering any PDFs.
     |
     */
 
     'raw_cache' => [
         'enabled' => (bool) env('BOARDDOCS_RAW_CACHE_ENABLED', true),
         'disk' => env('BOARDDOCS_RAW_CACHE_DISK', env('BOARDDOCS_DISK', 'local')),
-        'path' => env('BOARDDOCS_RAW_CACHE_PATH', 'private/boarddocs'),
+        'path' => env('BOARDDOCS_RAW_CACHE_PATH', 'boarddocs-public'),
     ],
 
     /*

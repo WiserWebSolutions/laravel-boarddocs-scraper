@@ -6,16 +6,18 @@ use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Persists the raw agenda HTML and attachment files BoardDocs returns for a
- * meeting that hasn't been exported yet, under boarddocs.raw_cache.path
- * (default "private/boarddocs"). This lets a scan finish building PDFs for
- * meetings it already fetched material for, from disk, if BoardDocs starts
- * returning 403s partway through a run — reconnecting only for whatever
- * individual file is missing from the cache.
+ * Persists everything downloaded from BoardDocs, unmodified — the raw
+ * print-agenda HTML and attachment files — under boarddocs.raw_cache.path
+ * (default "boarddocs-public"), kept separate from output.path, which only
+ * holds what we produce ourselves (the merged PDF + index).
  *
- * Once a meeting's agenda PDF has actually been exported, none of this
- * matters anymore (there's nothing left to build), so callers only need to
- * consult it for meetings that don't have a PDF yet.
+ * For a meeting that hasn't been exported yet, this doubles as a resilience
+ * cache: it lets a scan finish building that meeting's PDF from disk if
+ * BoardDocs starts returning 403s partway through a run — reconnecting only
+ * for whatever individual file is missing from the cache. Agenda checks it
+ * before making a live request for exactly that reason; once a PDF has
+ * actually been exported, the cache-hit shortcut no longer matters for that
+ * meeting, but the archived files themselves are kept regardless.
  */
 class RawCache
 {

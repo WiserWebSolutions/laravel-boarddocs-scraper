@@ -375,11 +375,12 @@ class Agenda
     }
 
     /**
-     * Archive each attachment's raw downloaded bytes next to the agenda PDF,
-     * before the PDF render pipeline deletes its temp copies. This is
-     * intentionally independent of whether the file also gets merged into the
-     * PDF, so the original source document is always available to refer back
-     * to (e.g. to open a spreadsheet natively rather than its embedded copy).
+     * Archive each attachment's raw downloaded bytes into the raw_cache tree
+     * (unmodified, as originally downloaded), before the PDF render pipeline
+     * deletes its temp copies. This is intentionally independent of whether
+     * the file also gets merged into the PDF, so the original source
+     * document is always available to refer back to (e.g. to open a
+     * spreadsheet natively rather than its embedded copy).
      *
      * @param  \BoardDocsScraper\Data\SavedAttachment[]  $saved
      */
@@ -397,7 +398,7 @@ class Agenda
             $this->meeting->date(),
         );
 
-        $disk = Storage::disk($this->config['output']['disk'] ?? 'local');
+        $disk = Storage::disk($this->config['raw_cache']['disk'] ?? ($this->config['output']['disk'] ?? 'local'));
 
         foreach ($saved as $attachment) {
             $disk->put($dir.'/'.$attachment->bookmark, file_get_contents($attachment->path));
