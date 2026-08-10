@@ -136,24 +136,24 @@ Everything is split across two directories (on the `local` disk by default, i.e.
 
 | Tree | Config | Default path | Contents |
 |------|--------|---------------|----------|
-| What BoardDocs gave us, unmodified | `raw_cache.path` | `boarddocs-public` | Raw print-agenda HTML + every downloaded attachment file, as originally fetched |
+| What BoardDocs gave us, unmodified | `archive.path` | `boarddocs-public` | Raw print-agenda HTML + every downloaded attachment file, as originally fetched |
 | What we produce | `output.path` | `boarddocs-private` | The merged/rewritten agenda PDF + `index.jsonl` |
 
 The names describe provenance, not web visibility — both live under Laravel's private
-`local` disk by default; point `output.disk`/`raw_cache.disk` at a public disk yourself if
+`local` disk by default; point `output.disk`/`archive.disk` at a public disk yourself if
 you want the generated PDFs served directly.
 
 ### Surviving BoardDocs blocking your server mid-scan
 
 BoardDocs will eventually 403 a server that scans it too aggressively. To make that
-survivable, every meeting's agenda HTML and attachment files are cached to the
-`raw_cache` tree the first time they're fetched — `boarddocs:scan` uses this cache
-transparently for meetings that haven't been exported yet, before falling back to a live
-request. Once a meeting's PDF has actually been exported, the cache-hit shortcut no
-longer matters for it, but the archived files themselves stay put either way.
+survivable, every meeting's agenda HTML and attachment files are archived the first time
+they're fetched — `boarddocs:scan` checks the archive transparently for meetings that
+haven't been exported yet, before falling back to a live request. Once a meeting's PDF
+has actually been exported, the cache-hit shortcut no longer matters for it, but the
+archived files themselves stay put either way.
 
 Run a dedicated prefetch pass — e.g. on a schedule, or as your own retry after a 403 —
-to warm the cache ahead of time without rendering any PDFs:
+to warm the archive ahead of time without rendering any PDFs:
 
 ```bash
 php artisan boarddocs:prefetch --site=pa/phoe
@@ -162,18 +162,18 @@ php artisan boarddocs:prefetch --no-attachments   # only cache agenda HTML
 
 `boarddocs:prefetch` stops immediately on the first 403 it hits, since every request
 after that is expected to fail the same way. A later `boarddocs:scan` run then builds
-each cached meeting's PDF straight from disk — reconnecting to BoardDocs only for an
-individual attachment that turns out to be missing from the cache, not the whole meeting.
+each archived meeting's PDF straight from disk — reconnecting to BoardDocs only for an
+individual attachment that turns out to be missing from the archive, not the whole meeting.
 
 #### If it's your deployed server's IP getting blocked
 
 Running `boarddocs:prefetch` on the same server that's already blocked doesn't help — it
 hits the same wall. What actually helps is running it from a different network, against
-the *same* cache the deployed server reads from. Point `raw_cache.disk` (and `output.disk`,
+the *same* archive the deployed server reads from. Point `archive.disk` (and `output.disk`,
 if you want) at a shared disk instead of `local` — any Flysystem-backed disk works, e.g. S3:
 
 ```dotenv
-BOARDDOCS_RAW_CACHE_DISK=s3
+BOARDDOCS_ARCHIVE_DISK=s3
 ```
 
 ```bash
@@ -188,11 +188,11 @@ different cloud box, anywhere with a clean IP). Then:
 # From the unblocked machine, against the shared disk:
 php artisan boarddocs:prefetch --site=pa/phoe
 
-# On the deployed server, whenever you like — reads the cache first:
+# On the deployed server, whenever you like — reads the archive first:
 php artisan boarddocs:scan --site=pa/phoe
 ```
 
-No package code cares which disk `raw_cache.disk` points to — `RawCache` only ever calls
+No package code cares which disk `archive.disk` points to — `Archive` only ever calls
 `exists()`/`get()`/`put()` on it, so any Laravel filesystem disk works without further
 changes.
 
@@ -295,7 +295,7 @@ See `config/boarddocs.php`. Highlights:
 | `http.debug` | Log every request/response (status, timing, headers/body) — see [Troubleshooting](#troubleshooting) |
 | `cache.store`, `cache.ttl` | Cache store + TTL for committee/meeting/agenda data |
 | `output.disk`, `output.path`, `output.index` | Where PDFs and `index.jsonl` are written |
-| `raw_cache.enabled`, `raw_cache.disk`, `raw_cache.path` | Where BoardDocs' raw agenda HTML/attachments are kept, unmodified (see [Two on-disk trees](#two-on-disk-trees-what-boarddocs-gave-us-vs-what-we-produce)) |
+| `archive.enabled`, `archive.disk`, `archive.path` | Where BoardDocs' raw agenda HTML/attachments are kept, unmodified (see [Two on-disk trees](#two-on-disk-trees-what-boarddocs-gave-us-vs-what-we-produce)) |
 | `pdf.engine` | `tcpdf` or `browsershot` |
 | `pdf.self_contained`, `pdf.remap_links`, `pdf.embed_non_pdf` | Self-contained PDF behavior |
 | `scan.refresh_recent_days` | Re-export window for recent meetings |
@@ -317,7 +317,7 @@ truncated body) is logged, and any `403` is additionally logged as a `warning` t
 `config/logging.php`, otherwise to the app's default channel. If you're seeing 403s,
 raise `http.request_delay` (`BOARDDOCS_REQUEST_DELAY`), scope the scan down with
 `--committee`/`--limit`/`--since`, or run `boarddocs:prefetch` during a window when
-BoardDocs is reachable so `boarddocs:scan` can build PDFs from the raw cache afterward —
+BoardDocs is reachable so `boarddocs:scan` can build PDFs from the archive afterward —
 see [Surviving BoardDocs blocking your server mid-scan](#surviving-boarddocs-blocking-your-server-mid-scan).
 
 ## Testing

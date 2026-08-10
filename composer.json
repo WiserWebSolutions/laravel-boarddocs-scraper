@@ -31,7 +31,7 @@
     "suggest": {
         "laravel/ai": "Required to use the bundled AI SDK Tool classes (SearchAgendasTool, GetMeetingTool, ListCommitteesTool) so LLM agents can search and consume exported agendas.",
         "spatie/browsershot": "Required to use the 'browsershot' PDF engine for high-fidelity (headless Chrome) agenda rendering. Needs Node + Chromium.",
-        "league/flysystem-aws-s3-v3": "Required if you point raw_cache.disk (or output.disk) at an S3-compatible disk, e.g. to run boarddocs:prefetch from a machine with a different IP than the deployed server BoardDocs is blocking."
+        "league/flysystem-aws-s3-v3": "Required if you point archive.disk (or output.disk) at an S3-compatible disk, e.g. to run boarddocs:prefetch from a machine with a different IP than the deployed server BoardDocs is blocking."
     },
     "autoload": {
         "psr-4": {

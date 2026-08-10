@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Storage;
  * second time. Wrapping the attachment stub in a closure makes every
  * matching request get a fresh body instead.
  */
-function fakeBoardDocsForRawCache(): void
+function fakeBoardDocsForArchive(): void
 {
     $committeeHtml = '<a class="committee-trigger" committeeid="AAAAAAAAAA01" aria-label="Board of School Directors"></a>';
 
@@ -63,7 +63,7 @@ function fakeBoardDocsForRawCache(): void
 
 it('keeps our generated output separate from BoardDocs\' raw downloaded files', function () {
     Storage::fake('local');
-    fakeBoardDocsForRawCache();
+    fakeBoardDocsForArchive();
 
     $pdf = BoardDocs()->site('pa/phoe')
         ->committees()->first()
@@ -76,22 +76,22 @@ it('keeps our generated output separate from BoardDocs\' raw downloaded files', 
     // What we produced (the merged PDF) lives under output.path.
     expect($pdfPath)->toStartWith(rtrim($config['output']['path'], '/').'/');
 
-    // What BoardDocs gave us, unmodified, lives under the separate raw_cache.path.
-    expect($pdf->attachmentsDir())->toStartWith(rtrim($config['raw_cache']['path'], '/').'/');
+    // What BoardDocs gave us, unmodified, lives under the separate archive.path.
+    expect($pdf->attachmentsDir())->toStartWith(rtrim($config['archive']['path'], '/').'/');
     Storage::disk('local')->assertExists($pdf->attachmentsDir().'/Personnel Report.pdf');
 });
 
-it('prefetches agenda html and attachment bytes into the raw cache without rendering a pdf', function () {
+it('prefetches agenda html and attachment bytes into the archive without rendering a pdf', function () {
     Storage::fake('local');
-    fakeBoardDocsForRawCache();
+    fakeBoardDocsForArchive();
 
     Artisan::call('boarddocs:prefetch', ['--site' => 'pa/phoe']);
 
     $config = app('boarddocs')->config();
-    $htmlPath = OutputPaths::rawAgendaHtmlPath($config, 'pa/phoe', 'Board of School Directors', '2024-01-08');
-    $attachmentPath = OutputPaths::rawAttachmentsPath($config, 'pa/phoe', 'Board of School Directors', '2024-01-08')
+    $htmlPath = OutputPaths::archiveAgendaHtmlPath($config, 'pa/phoe', 'Board of School Directors', '2024-01-08');
+    $attachmentPath = OutputPaths::archiveAttachmentsPath($config, 'pa/phoe', 'Board of School Directors', '2024-01-08')
         .'/Personnel Report.pdf';
-    $manifestPath = OutputPaths::rawAttachmentsPath($config, 'pa/phoe', 'Board of School Directors', '2024-01-08')
+    $manifestPath = OutputPaths::archiveAttachmentsPath($config, 'pa/phoe', 'Board of School Directors', '2024-01-08')
         .'/manifest.json';
 
     Storage::disk('local')->assertExists($htmlPath);
@@ -107,9 +107,9 @@ it('prefetches agenda html and attachment bytes into the raw cache without rende
     expect($manifest[0]['bookmark'])->toBe('Personnel Report.pdf');
 });
 
-it('builds the pdf entirely from the raw cache once BoardDocs starts blocking requests', function () {
+it('builds the pdf entirely from the archive once BoardDocs starts blocking requests', function () {
     Storage::fake('local');
-    fakeBoardDocsForRawCache();
+    fakeBoardDocsForArchive();
 
     Artisan::call('boarddocs:prefetch', ['--site' => 'pa/phoe']);
 
@@ -129,18 +129,18 @@ it('builds the pdf entirely from the raw cache once BoardDocs starts blocking re
     Http::assertNothingSent();
 });
 
-it('reconnects to BoardDocs only for a specific attachment missing from the cache', function () {
+it('reconnects to BoardDocs only for a specific attachment missing from the archive', function () {
     Storage::fake('local');
-    fakeBoardDocsForRawCache();
+    fakeBoardDocsForArchive();
 
     Artisan::call('boarddocs:prefetch', ['--site' => 'pa/phoe']);
 
     $config = app('boarddocs')->config();
-    $attachmentPath = OutputPaths::rawAttachmentsPath($config, 'pa/phoe', 'Board of School Directors', '2024-01-08')
+    $attachmentPath = OutputPaths::archiveAttachmentsPath($config, 'pa/phoe', 'Board of School Directors', '2024-01-08')
         .'/Personnel Report.pdf';
 
-    // Simulate an incomplete cache: the manifest exists, but this one file's
-    // bytes were never persisted (or got lost).
+    // Simulate an incomplete archive: the manifest exists, but this one
+    // file's bytes were never persisted (or got lost).
     Storage::disk('local')->delete($attachmentPath);
     Storage::disk('local')->assertMissing($attachmentPath);
 
@@ -155,9 +155,9 @@ it('reconnects to BoardDocs only for a specific attachment missing from the cach
     expect(Artisan::output())->toContain('wrote=2');
 
     // Only the one missing attachment was re-fetched from BoardDocs (the
-    // other meeting's cache was fully intact).
+    // other meeting's archive was fully intact).
     Http::assertSentCount(1);
 
-    // The cache is backfilled for next time.
+    // The archive is backfilled for next time.
     Storage::disk('local')->assertExists($attachmentPath);
 });

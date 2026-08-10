@@ -9,7 +9,7 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Pre-downloads (into the raw_cache) every not-yet-exported meeting's agenda
+ * Pre-downloads (into the archive) every not-yet-exported meeting's agenda
  * HTML and attachment files, without rendering any PDFs. Meant to be run
  * while BoardDocs is still reachable so a later `boarddocs:scan` can build
  * those meetings' PDFs from disk, even if BoardDocs starts returning 403s
@@ -30,14 +30,14 @@ class PrefetchCommand extends Command
         {--no-attachments : Only cache agenda HTML, not attachment files}
         {--fresh : Bypass the committee/meeting cache}';
 
-    protected $description = 'Pre-download BoardDocs agenda HTML + attachments into the raw cache, without rendering PDFs.';
+    protected $description = 'Pre-download BoardDocs agenda HTML + attachments into the archive, without rendering PDFs.';
 
     public function handle(BoardDocsManager $manager): int
     {
         $config = $manager->config();
 
-        if (! ($config['raw_cache']['enabled'] ?? true)) {
-            $this->error('boarddocs.raw_cache.enabled is false — there is nowhere to prefetch into.');
+        if (! ($config['archive']['enabled'] ?? true)) {
+            $this->error('boarddocs.archive.enabled is false — there is nowhere to prefetch into.');
 
             return self::FAILURE;
         }

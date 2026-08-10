@@ -76,7 +76,7 @@ return [
     | layout mirrors the original project: {path}/{district}/Public/{committee}/{YYYY-MM-DD}-Agenda.pdf
     |
     | Raw material downloaded from BoardDocs itself — the print-agenda HTML
-    | and every attachment file, unmodified — lives in the separate raw_cache
+    | and every attachment file, unmodified — lives in the separate archive
     | tree below instead, so our own generated output never mixes with
     | BoardDocs' original files.
     |
@@ -89,7 +89,7 @@ return [
         'visibility' => 'Public',
 
         // Archive each meeting's raw downloaded attachments (as originally
-        // fetched from BoardDocs, unmodified) into the raw_cache tree below,
+        // fetched from BoardDocs, unmodified) into the archive tree below,
         // under a "{date}-Attachments/" directory. Independent of
         // pdf.self_contained/embed_non_pdf, which only control what gets
         // merged into the PDF itself — this keeps the untouched source files
@@ -99,7 +99,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Raw file cache
+    | Archive
     |--------------------------------------------------------------------------
     |
     | Where everything downloaded from BoardDocs, unmodified, is kept — the
@@ -119,10 +119,10 @@ return [
     |
     */
 
-    'raw_cache' => [
-        'enabled' => (bool) env('BOARDDOCS_RAW_CACHE_ENABLED', true),
-        'disk' => env('BOARDDOCS_RAW_CACHE_DISK', env('BOARDDOCS_DISK', 'local')),
-        'path' => env('BOARDDOCS_RAW_CACHE_PATH', 'boarddocs-public'),
+    'archive' => [
+        'enabled' => (bool) env('BOARDDOCS_ARCHIVE_ENABLED', true),
+        'disk' => env('BOARDDOCS_ARCHIVE_DISK', env('BOARDDOCS_DISK', 'local')),
+        'path' => env('BOARDDOCS_ARCHIVE_PATH', 'boarddocs-public'),
     ],
 
     /*
