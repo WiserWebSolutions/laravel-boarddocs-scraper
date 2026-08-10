@@ -91,6 +91,33 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Raw file cache
+    |--------------------------------------------------------------------------
+    |
+    | Persists the raw print-agenda HTML and attachment files BoardDocs
+    | returns for a meeting that hasn't been exported yet, mirroring
+    | output.*'s layout but rooted at "path" below (default
+    | "private/boarddocs", i.e. storage/app/private/boarddocs on the default
+    | "local" disk). This lets a scan finish building PDFs for meetings it
+    | already fetched material for, from disk, if BoardDocs starts returning
+    | 403s partway through a run — reconnecting only for whatever individual
+    | file turns out to be missing from the cache. `php artisan
+    | boarddocs:prefetch` warms this cache ahead of time without rendering
+    | any PDFs; `boarddocs:scan` uses it transparently either way.
+    |
+    | Once a meeting's PDF actually exists, nothing here matters for it
+    | anymore, so this only ever holds material for pending meetings.
+    |
+    */
+
+    'raw_cache' => [
+        'enabled' => (bool) env('BOARDDOCS_RAW_CACHE_ENABLED', true),
+        'disk' => env('BOARDDOCS_RAW_CACHE_DISK', env('BOARDDOCS_DISK', 'local')),
+        'path' => env('BOARDDOCS_RAW_CACHE_PATH', 'private/boarddocs'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | PDF generation
     |--------------------------------------------------------------------------
     |

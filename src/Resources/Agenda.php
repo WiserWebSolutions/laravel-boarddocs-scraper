@@ -4,11 +4,16 @@ namespace BoardDocsScraper\Resources;
 
 use BoardDocsScraper\Client\BoardDocsClient;
 use BoardDocsScraper\Data\AgendaItemData;
+use BoardDocsScraper\Data\SavedAttachment;
+use BoardDocsScraper\Exceptions\BoardDocsException;
 use BoardDocsScraper\Parsing\AgendaParser;
+use BoardDocsScraper\Pdf\Assembler;
 use BoardDocsScraper\Pdf\MeetingDocument;
 use BoardDocsScraper\Pdf\PdfManager;
 use BoardDocsScraper\Support\AttachmentCollector;
 use BoardDocsScraper\Support\OutputPaths;
+use BoardDocsScraper\Support\RawCache;
+use BoardDocsScraper\Support\Urls;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 
@@ -30,6 +35,10 @@ class Agenda
 
     /** @var AgendaItemData[]|null Outline items (unique ids) from BD-GetAgenda, used for PDF assembly. */
     protected ?array $outlineItems = null;
+
+    protected ?RawCache $rawCache = null;
+
+    protected bool $rawCacheResolved = false;
 
     public function __construct(
         protected Meeting $meeting,
@@ -67,10 +76,23 @@ class Agenda
      */
     public function html(): string
     {
-        return $this->printHtml ??= $this->client->fetchPrintAgendaHtml(
-            $this->meeting->unique(),
-            $this->meeting->committee()->committeeId,
-        );
+        if ($this->printHtml !== null) {
+            return $this->printHtml;
+        }
+
+        $committee = $this->meeting->committee();
+        $rawCache = $this->rawCache();
+
+        $cached = $rawCache?->getAgendaHtml($committee->site()->name(), $committee->name, $this->meeting->date());
+        if ($cached !== null) {
+            return $this->printHtml = $cached;
+        }
+
+        $html = $this->client->fetchPrintAgendaHtml($this->meeting->unique(), $committee->committeeId);
+
+        $rawCache?->putAgendaHtml($committee->site()->name(), $committee->name, $this->meeting->date(), $html);
+
+        return $this->printHtml = $html;
     }
 
     /**
@@ -189,12 +211,7 @@ class Agenda
 
         $saved = [];
         if ($this->withAttachments) {
-            $saved = (new AttachmentCollector($this->client))->collect(
-                $this->meeting->data(),
-                $committee->committeeId,
-                $printHtml,
-                $this->outlineItems()->all(),
-            );
+            $saved = $this->collectAttachments($committee, $printHtml);
 
             if ($this->config['output']['save_attachments'] ?? true) {
                 $this->persistAttachments($saved);
@@ -225,6 +242,136 @@ class Agenda
     public function save(?string $path = null, ?string $disk = null): string
     {
         return $this->toPdf()->save($path, $disk);
+    }
+
+    /**
+     * Fetch (or reuse from raw_cache) this meeting's agenda HTML and attachment
+     * files without rendering a PDF, so a later toPdf() call can build the
+     * document entirely from disk. Used by `boarddocs:prefetch` to warm the
+     * cache ahead of a scan while BoardDocs is still reachable.
+     *
+     * @return \BoardDocsScraper\Data\SavedAttachment[]
+     */
+    public function cacheAttachments(): array
+    {
+        $printHtml = $this->html();
+        $saved = $this->collectAttachments($this->meeting->committee(), $printHtml);
+
+        Assembler::cleanup(array_map(fn (SavedAttachment $a) => $a->path, $saved));
+
+        return $saved;
+    }
+
+    /**
+     * Collect this meeting's attachments, preferring the raw_cache over a live
+     * fetch whenever a manifest already exists for it (a prior run persisted
+     * one). Any bookmark listed in a cached manifest whose bytes are missing
+     * from the cache is downloaded fresh and added back to the cache — the
+     * only case that reconnects to BoardDocs once a manifest exists.
+     */
+    protected function collectAttachments(Committee $committee, string $printHtml): array
+    {
+        $rawCache = $this->rawCache();
+        $site = $committee->site()->name();
+        $date = $this->meeting->date();
+
+        $manifest = $rawCache?->getManifest($site, $committee->name, $date);
+        if ($manifest !== null) {
+            return $this->rehydrateAttachments($rawCache, $site, $committee->name, $date, $manifest);
+        }
+
+        $saved = (new AttachmentCollector($this->client))->collect(
+            $this->meeting->data(),
+            $committee->committeeId,
+            $printHtml,
+            $this->outlineItems()->all(),
+        );
+
+        if ($rawCache !== null) {
+            $this->cacheCollectedAttachments($rawCache, $site, $committee->name, $date, $saved);
+        }
+
+        return $saved;
+    }
+
+    /**
+     * @return \BoardDocsScraper\Data\SavedAttachment[]
+     */
+    protected function rehydrateAttachments(RawCache $rawCache, string $site, string $committeeName, string $date, array $manifest): array
+    {
+        $tempDir = $this->makeTempDir();
+        $saved = [];
+
+        foreach ($manifest as $record) {
+            $bookmark = (string) ($record['bookmark'] ?? '');
+            if ($bookmark === '') {
+                continue;
+            }
+
+            $localPath = $tempDir.DIRECTORY_SEPARATOR.$bookmark;
+
+            if (! $rawCache->copyAttachmentTo($site, $committeeName, $date, $bookmark, $localPath)) {
+                $href = Urls::resolveAttachmentUrl((string) ($record['href'] ?? ''), $this->client->baseUrl());
+                $size = $this->client->downloadToFile($href, $localPath);
+                if ($size === 0) {
+                    @unlink($localPath);
+                    throw new BoardDocsException("Empty download for cached attachment '{$bookmark}' ({$href}).");
+                }
+                $rawCache->putAttachmentFile($site, $committeeName, $date, $bookmark, $localPath);
+            }
+
+            $saved[] = new SavedAttachment(
+                bookmark: $bookmark,
+                path: $localPath,
+                resolvedUrl: (string) ($record['resolvedUrl'] ?? $record['href'] ?? ''),
+                href: (string) ($record['href'] ?? ''),
+                fileUnique: (string) ($record['fileUnique'] ?? ''),
+                itemUnique: (string) ($record['itemUnique'] ?? ''),
+            );
+        }
+
+        return $saved;
+    }
+
+    /**
+     * @param  \BoardDocsScraper\Data\SavedAttachment[]  $saved
+     */
+    protected function cacheCollectedAttachments(RawCache $rawCache, string $site, string $committeeName, string $date, array $saved): void
+    {
+        $manifest = [];
+        foreach ($saved as $attachment) {
+            /** @var SavedAttachment $attachment */
+            $rawCache->putAttachmentFile($site, $committeeName, $date, $attachment->bookmark, $attachment->path);
+            $manifest[] = [
+                'bookmark' => $attachment->bookmark,
+                'href' => $attachment->href,
+                'resolvedUrl' => $attachment->resolvedUrl,
+                'fileUnique' => $attachment->fileUnique,
+                'itemUnique' => $attachment->itemUnique,
+            ];
+        }
+
+        $rawCache->putManifest($site, $committeeName, $date, $manifest);
+    }
+
+    protected function makeTempDir(): string
+    {
+        $dir = sys_get_temp_dir().DIRECTORY_SEPARATOR.'bdscraper_'.bin2hex(random_bytes(5));
+        if (! is_dir($dir) && ! mkdir($dir, 0777, true) && ! is_dir($dir)) {
+            throw new BoardDocsException("Could not create temp directory '{$dir}' for cached attachment downloads.");
+        }
+
+        return $dir;
+    }
+
+    protected function rawCache(): ?RawCache
+    {
+        if (! $this->rawCacheResolved) {
+            $this->rawCacheResolved = true;
+            $this->rawCache = ($this->config['raw_cache']['enabled'] ?? true) ? new RawCache($this->config) : null;
+        }
+
+        return $this->rawCache;
     }
 
     /**

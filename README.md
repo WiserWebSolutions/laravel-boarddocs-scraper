@@ -129,6 +129,28 @@ php artisan boarddocs:search budget transportation --committee=Finance --limit=1
 php artisan boarddocs:search budget --json               # machine-readable output
 ```
 
+### Surviving BoardDocs blocking your server mid-scan
+
+BoardDocs will eventually 403 a server that scans it too aggressively. To make that
+survivable, every not-yet-exported meeting's agenda HTML and attachment files are cached
+to disk (`boarddocs.raw_cache`, default `private/boarddocs` on the `local` disk) the first
+time they're fetched — `boarddocs:scan` uses this cache transparently, before falling
+back to a live request. Once a meeting's PDF has actually been exported, its cache entry
+is irrelevant and ignored from then on.
+
+Run a dedicated prefetch pass — e.g. on a schedule, or as your own retry after a 403 —
+to warm the cache ahead of time without rendering any PDFs:
+
+```bash
+php artisan boarddocs:prefetch --site=pa/phoe
+php artisan boarddocs:prefetch --no-attachments   # only cache agenda HTML
+```
+
+`boarddocs:prefetch` stops immediately on the first 403 it hits, since every request
+after that is expected to fail the same way. A later `boarddocs:scan` run then builds
+each cached meeting's PDF straight from disk — reconnecting to BoardDocs only for an
+individual attachment that turns out to be missing from the cache, not the whole meeting.
+
 `index.jsonl` has the same shape as the original project (one meeting per line):
 
 ```json
@@ -228,6 +250,7 @@ See `config/boarddocs.php`. Highlights:
 | `http.debug` | Log every request/response (status, timing, headers/body) — see [Troubleshooting](#troubleshooting) |
 | `cache.store`, `cache.ttl` | Cache store + TTL for committee/meeting/agenda data |
 | `output.disk`, `output.path`, `output.index` | Where PDFs and `index.jsonl` are written |
+| `raw_cache.enabled`, `raw_cache.disk`, `raw_cache.path` | Where not-yet-exported meetings' raw agenda HTML/attachments are cached (see [Surviving BoardDocs blocking your server mid-scan](#surviving-boarddocs-blocking-your-server-mid-scan)) |
 | `pdf.engine` | `tcpdf` or `browsershot` |
 | `pdf.self_contained`, `pdf.remap_links`, `pdf.embed_non_pdf` | Self-contained PDF behavior |
 | `scan.refresh_recent_days` | Re-export window for recent meetings |
@@ -247,8 +270,10 @@ Every outbound request and response (method, URL, status, elapsed time, headers,
 truncated body) is logged, and any `403` is additionally logged as a `warning` tagged
 `boarddocs.blocked`. Logs go to a `boarddocs` log channel if your app defines one in
 `config/logging.php`, otherwise to the app's default channel. If you're seeing 403s,
-raise `http.request_delay` (`BOARDDOCS_REQUEST_DELAY`) or scope the scan down with
-`--committee`/`--limit`/`--since`.
+raise `http.request_delay` (`BOARDDOCS_REQUEST_DELAY`), scope the scan down with
+`--committee`/`--limit`/`--since`, or run `boarddocs:prefetch` during a window when
+BoardDocs is reachable so `boarddocs:scan` can build PDFs from the raw cache afterward —
+see [Surviving BoardDocs blocking your server mid-scan](#surviving-boarddocs-blocking-your-server-mid-scan).
 
 ## Testing
 
