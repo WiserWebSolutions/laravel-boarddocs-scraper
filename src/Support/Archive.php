@@ -152,17 +152,20 @@ class Archive
             return false;
         }
 
-        file_put_contents($destination, $this->disk()->get($this->attachmentFilePath($site, $committeeName, $date, $bookmark)));
+        $source = $this->disk()->readStream($this->attachmentFilePath($site, $committeeName, $date, $bookmark));
+        $target = fopen($destination, 'w');
+        stream_copy_to_stream($source, $target);
+        fclose($source);
+        fclose($target);
 
         return true;
     }
 
     public function putAttachmentFile(string $site, string $committeeName, string $date, string $bookmark, string $localPath): void
     {
-        $this->disk()->put(
-            $this->attachmentFilePath($site, $committeeName, $date, $bookmark),
-            file_get_contents($localPath),
-        );
+        $stream = fopen($localPath, 'r');
+        $this->disk()->put($this->attachmentFilePath($site, $committeeName, $date, $bookmark), $stream);
+        fclose($stream);
     }
 
     protected function disk(): Filesystem

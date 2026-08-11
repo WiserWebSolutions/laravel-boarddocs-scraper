@@ -503,7 +503,9 @@ class Agenda
         $disk = Storage::disk($this->config['archive']['disk'] ?? ($this->config['output']['disk'] ?? 'local'));
 
         foreach ($saved as $attachment) {
-            $disk->put($dir.'/'.$attachment->bookmark, file_get_contents($attachment->path));
+            $stream = fopen($attachment->path, 'r');
+            $disk->put($dir.'/'.$attachment->bookmark, $stream);
+            fclose($stream);
         }
     }
 }

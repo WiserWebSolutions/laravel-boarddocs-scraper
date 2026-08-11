@@ -151,25 +151,34 @@ class BoardDocsClient
      */
     public function fetchItemAttachments(string $itemId, string $committeeId): array
     {
-        $postData = "id={$itemId}&current_committee_id={$committeeId}";
-        $attachments = [];
-        $seen = [];
+        // Cache the plain-array shape; see the note in discoverCommittees()
+        // about allowed_classes-restricted unserialize. Caching here matters
+        // because both Agenda::attachments() (metadata preview) and
+        // AttachmentCollector::collect() (actual download) look up the same
+        // item's attachments during a single prefetch/build pass.
+        $rows = $this->remember("item-attachments:{$committeeId}:{$itemId}", function () use ($itemId, $committeeId) {
+            $postData = "id={$itemId}&current_committee_id={$committeeId}";
+            $attachments = [];
+            $seen = [];
 
-        // Public export only queries the public files endpoint.
-        foreach (['BD-GetPublicFiles'] as $endpoint) {
-            $resp = $this->postRaw($endpoint, $postData);
-            if ($resp->status() !== 200) {
-                continue;
-            }
-            foreach (FileLinkParser::parse($resp->body()) as $att) {
-                if (! isset($seen[$att->unique])) {
-                    $seen[$att->unique] = true;
-                    $attachments[] = $att;
+            // Public export only queries the public files endpoint.
+            foreach (['BD-GetPublicFiles'] as $endpoint) {
+                $resp = $this->postRaw($endpoint, $postData);
+                if ($resp->status() !== 200) {
+                    continue;
+                }
+                foreach (FileLinkParser::parse($resp->body()) as $att) {
+                    if (! isset($seen[$att->unique])) {
+                        $seen[$att->unique] = true;
+                        $attachments[] = $att;
+                    }
                 }
             }
-        }
 
-        return $attachments;
+            return array_map(fn (AttachmentData $a) => $a->toArray(), $attachments);
+        });
+
+        return array_map(fn (array $row) => AttachmentData::fromArray($row), $rows);
     }
 
     /* ---------------------------------------------------------------------

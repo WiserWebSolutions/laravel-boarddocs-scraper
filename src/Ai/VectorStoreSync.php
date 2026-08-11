@@ -17,6 +17,8 @@ use Laravel\Ai\Stores;
  */
 class VectorStoreSync
 {
+    protected ?object $store = null;
+
     public function __construct(protected array $config)
     {
     }
@@ -61,7 +63,7 @@ class VectorStoreSync
      */
     public function syncDocument(string $relativePath, ?string $disk, array $metadata, ?string $previousDocumentId = null): string
     {
-        $store = Stores::get($this->storeId(), $this->config['ai']['vector_store']['provider'] ?? null);
+        $store = $this->store();
 
         if (! empty($previousDocumentId)) {
             $store->remove($previousDocumentId, deleteFile: true);
@@ -72,5 +74,15 @@ class VectorStoreSync
         $added = $store->add($document, metadata: $metadata);
 
         return $added->id;
+    }
+
+    /**
+     * Resolved once per command run and reused across every document upload
+     * (agenda PDF, agenda HTML, each attachment) instead of re-resolving the
+     * store client on every single syncDocument() call.
+     */
+    protected function store(): object
+    {
+        return $this->store ??= Stores::get($this->storeId(), $this->config['ai']['vector_store']['provider'] ?? null);
     }
 }

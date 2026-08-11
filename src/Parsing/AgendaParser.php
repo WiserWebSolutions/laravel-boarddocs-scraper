@@ -30,6 +30,15 @@ class AgendaParser
             .'[^>]*Xtitle="([^"]*)"[^>]*>([\s\S]*?)<\/li>/i';
 
         if (preg_match_all($itemRe, $agendaHtml, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE)) {
+            // Both $matches and $categories are already in document order
+            // (regex matches are returned in the order they occur), so a
+            // single advancing cursor finds each item's owning category
+            // instead of rescanning all categories from the start per item.
+            $categoryName = '';
+            $contentSection = 'other';
+            $catIndex = 0;
+            $catCount = count($categories);
+
             foreach ($matches as $m) {
                 $start = $m[0][1];
                 $body = $m[4][0];
@@ -42,15 +51,10 @@ class AgendaParser
                 $inlineAttachments = FileLinkParser::parse($body);
                 $hasFileIcon = str_contains($body, 'fa-file-text-o');
 
-                $categoryName = '';
-                $contentSection = 'other';
-                foreach ($categories as $cat) {
-                    if ($cat['pos'] < $start) {
-                        $categoryName = $cat['name'];
-                        $contentSection = self::classifyContentSection($cat['name']);
-                    } else {
-                        break;
-                    }
+                while ($catIndex < $catCount && $categories[$catIndex]['pos'] < $start) {
+                    $categoryName = $categories[$catIndex]['name'];
+                    $contentSection = self::classifyContentSection($categoryName);
+                    $catIndex++;
                 }
 
                 $items[] = new AgendaItemData(

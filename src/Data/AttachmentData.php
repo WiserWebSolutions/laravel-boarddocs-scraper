@@ -31,4 +31,14 @@ class AttachmentData
             'size' => $this->size,
         ];
     }
+
+    public static function fromArray(array $row): self
+    {
+        return new self(
+            unique: (string) ($row['unique'] ?? ''),
+            href: (string) ($row['href'] ?? ''),
+            name: (string) ($row['name'] ?? ''),
+            size: (string) ($row['size'] ?? ''),
+        );
+    }
 }
