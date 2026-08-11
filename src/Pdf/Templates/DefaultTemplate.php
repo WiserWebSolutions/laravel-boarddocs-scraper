@@ -4,8 +4,9 @@ namespace BoardDocsScraper\Pdf\Templates;
 
 /**
  * Clean, modern, minimal-color styling: neutral grays for body text, a single
- * muted-blue accent for headings and links, generous line-height/spacing for
- * readability. Ships as the package default (config('boarddocs.pdf.template')).
+ * muted-blue accent for headings and links, and compact line-height/spacing so
+ * an agenda's page count doesn't balloon from styling alone. Ships as the
+ * package default (config('boarddocs.pdf.template')).
  */
 class DefaultTemplate implements PdfTemplate
 {
@@ -18,14 +19,14 @@ class DefaultTemplate implements PdfTemplate
     {
         return <<<'HTML'
         <style>
-            body { font-family: helvetica, sans-serif; font-size: 10pt; color: #1f2937; line-height: 1.5; }
-            .print-meeting-name { font-family: helvetica, sans-serif; font-size: 17pt; font-weight: bold; text-align: center; color: #111827; }
-            .print-meeting-date { font-family: helvetica, sans-serif; font-size: 11pt; text-align: center; color: #6b7280; padding-bottom: 8px; border-bottom: 1px solid #cbd5e1; }
-            .category, .wrap-category { font-family: helvetica, sans-serif; font-size: 12pt; font-weight: bold; color: #ffffff; background-color: #1e40af; padding: 6px 10px; }
-            .item { font-family: helvetica, sans-serif; font-size: 10pt; color: #1f2937; }
-            .leftcol { font-family: helvetica, sans-serif; font-size: 9pt; font-weight: bold; color: #6b7280; }
-            .rightcol { font-family: helvetica, sans-serif; font-size: 10pt; color: #1f2937; }
-            .itembody { font-family: helvetica, sans-serif; font-size: 10pt; color: #1f2937; }
+            body { font-family: helvetica, sans-serif; font-size: 9pt; color: #1f2937; line-height: 1.25; }
+            .print-meeting-name { font-family: helvetica, sans-serif; font-size: 14pt; font-weight: bold; text-align: center; color: #111827; }
+            .print-meeting-date { font-family: helvetica, sans-serif; font-size: 9pt; text-align: center; color: #6b7280; padding-bottom: 3px; border-bottom: 1px solid #cbd5e1; }
+            .category, .wrap-category { font-family: helvetica, sans-serif; font-size: 10pt; font-weight: bold; color: #ffffff; background-color: #1e40af; padding: 2px 8px; }
+            .item { font-family: helvetica, sans-serif; font-size: 9pt; color: #1f2937; }
+            .leftcol { font-family: helvetica, sans-serif; font-size: 8pt; font-weight: bold; color: #6b7280; }
+            .rightcol { font-family: helvetica, sans-serif; font-size: 9pt; color: #1f2937; }
+            .itembody { font-family: helvetica, sans-serif; font-size: 9pt; color: #1f2937; }
             a { color: #1d4ed8; }
         </style>
         HTML;
@@ -56,32 +57,32 @@ class DefaultTemplate implements PdfTemplate
           }
           body {
             font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            font-size: 11pt;
-            line-height: 1.6;
+            font-size: 9.5pt;
+            line-height: 1.35;
             color: var(--text);
             margin: 0;
-            padding: 40px 44px;
+            padding: 20px 28px;
           }
           .print-meeting-name {
-            font-size: 20pt;
+            font-size: 16pt;
             font-weight: 700;
             text-align: center;
             color: var(--heading);
             letter-spacing: -0.01em;
-            margin-bottom: 6px;
+            margin-bottom: 3px;
           }
           .print-meeting-date {
-            font-size: 11pt;
+            font-size: 9.5pt;
             text-align: center;
             color: var(--muted);
             text-transform: uppercase;
             letter-spacing: 0.06em;
-            margin-bottom: 28px;
-            padding-bottom: 20px;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
             border-bottom: 2px solid var(--accent);
           }
           .category, .wrap-category {
-            font-size: 12pt;
+            font-size: 10.5pt;
             font-weight: 700;
             color: var(--accent);
             text-transform: uppercase;
@@ -89,31 +90,31 @@ class DefaultTemplate implements PdfTemplate
             background: var(--accent-soft);
             border-left: 4px solid var(--accent);
             border-radius: 0 4px 4px 0;
-            padding: 8px 14px;
-            margin-top: 1.8em;
-            margin-bottom: 0.8em;
+            padding: 3px 10px;
+            margin-top: 0.8em;
+            margin-bottom: 0.4em;
           }
           .item {
-            font-size: 11pt;
+            font-size: 9.5pt;
             color: var(--text);
-            margin: 0.6em 0 1.2em;
+            margin: 0.25em 0 0.6em;
           }
           dl.row {
             display: flex;
-            gap: 8px;
-            margin: 2px 0;
+            gap: 6px;
+            margin: 1px 0;
           }
           dt {
             font-weight: 600;
-            font-size: 9pt;
+            font-size: 8pt;
             color: var(--muted);
             text-transform: uppercase;
             letter-spacing: 0.03em;
-            min-width: 70px;
+            min-width: 60px;
           }
           dd { margin: 0; color: var(--text); }
-          .itembody { margin-top: 6px; }
-          .itembody p { margin: 0.4em 0; }
+          .itembody { margin-top: 3px; }
+          .itembody p { margin: 0.2em 0; }
           a {
             color: var(--link);
             text-decoration: none;
@@ -126,8 +127,8 @@ class DefaultTemplate implements PdfTemplate
             background: var(--accent-soft);
             border: 1px solid var(--accent-soft-border);
             border-radius: 4px;
-            padding: 2px 8px;
-            font-size: 10pt;
+            padding: 1px 6px;
+            font-size: 9pt;
           }
           a.public-file::before, a.print-file::before { content: "📎 "; }
         </style></head><body>{$body}</body></html>
