@@ -95,6 +95,15 @@ class Archive
         return $this->disk()->exists($path) ? $this->disk()->get($path) : null;
     }
 
+    /**
+     * Whether a meeting's agenda HTML is archived, without reading its bytes —
+     * used by `boarddocs:status` to summarize cache coverage cheaply.
+     */
+    public function hasAgendaHtml(string $site, string $committeeName, string $date): bool
+    {
+        return $this->disk()->exists(OutputPaths::archiveAgendaHtmlPath($this->config, $site, $committeeName, $date));
+    }
+
     public function putAgendaHtml(string $site, string $committeeName, string $date, string $html): void
     {
         $this->disk()->put(OutputPaths::archiveAgendaHtmlPath($this->config, $site, $committeeName, $date), $html);

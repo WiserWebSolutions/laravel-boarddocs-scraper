@@ -7,6 +7,7 @@ use BoardDocsScraper\Console\CreateVectorStoreCommand;
 use BoardDocsScraper\Console\PrefetchCommand;
 use BoardDocsScraper\Console\ScanCommand;
 use BoardDocsScraper\Console\SearchCommand;
+use BoardDocsScraper\Console\StatusCommand;
 use Illuminate\Support\ServiceProvider;
 
 class BoardDocsServiceProvider extends ServiceProvider
@@ -39,6 +40,7 @@ class BoardDocsServiceProvider extends ServiceProvider
                 CreateVectorStoreCommand::class,
                 PrefetchCommand::class,
                 BuildCommand::class,
+                StatusCommand::class,
             ]);
         }
     }
