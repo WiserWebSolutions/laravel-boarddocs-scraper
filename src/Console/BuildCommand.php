@@ -2,7 +2,6 @@
 
 namespace BoardDocsScraper\Console;
 
-use BoardDocsScraper\Ai\VectorStoreSync;
 use BoardDocsScraper\BoardDocsManager;
 use BoardDocsScraper\Data\CommitteeData;
 use BoardDocsScraper\Data\MeetingData;
@@ -102,9 +101,7 @@ class BuildCommand extends Command
         $limit = $this->option('limit') !== null ? (int) $this->option('limit') : null;
 
         $index = $manager->indexBuilder()->load();
-        $vectorSync = new VectorStoreSync($config);
-        $vectorSync = $vectorSync->enabled() ? $vectorSync : null;
-        $written = $skipped = $failed = $vectorSynced = 0;
+        $written = $skipped = $failed = 0;
 
         foreach ($committeeRows as $row) {
             $committeeData = CommitteeData::fromArray($row);
@@ -139,14 +136,6 @@ class BuildCommand extends Command
                 $rel = OutputPaths::meetingPath($config, $siteName, $committee->name, $meeting->date());
 
                 if ($disk->exists($rel) && ! $this->withinRecent($meeting->date(), $refreshDays)) {
-                    if ($vectorSync !== null && ! $this->option('dry-run')) {
-                        $existing = $index->get(OutputPaths::relativeToBase($config, $rel));
-                        if ($existing !== null && empty($existing['vector_document_id'])) {
-                            $index->put($vectorSync->sync($existing, $rel));
-                            $vectorSynced++;
-                        }
-                    }
-
                     $this->line("  skip existing {$meeting->date()}");
                     $skipped++;
 
@@ -170,11 +159,6 @@ class BuildCommand extends Command
 
                     $entry = $pdf->indexEntry($rel);
 
-                    if ($vectorSync !== null) {
-                        $entry = $vectorSync->sync($entry, $rel, $index->get($entry['path']));
-                        $vectorSynced++;
-                    }
-
                     $index->put($entry);
                     $written++;
 
@@ -197,9 +181,7 @@ class BuildCommand extends Command
         }
 
         $this->newLine();
-        $this->info($vectorSync !== null
-            ? "Done. wrote={$written} skipped={$skipped} failed={$failed} vector_synced={$vectorSynced}"
-            : "Done. wrote={$written} skipped={$skipped} failed={$failed}");
+        $this->info("Done. wrote={$written} skipped={$skipped} failed={$failed}");
 
         return self::SUCCESS;
     }

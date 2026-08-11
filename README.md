@@ -316,10 +316,22 @@ scanned attachments or phrasing that keyword search misses.
    // put $store->id in .env as BOARDDOCS_VECTOR_STORE_ID
    ```
 
-2. Run `php artisan boarddocs:scan` as usual. Whenever the vector driver is active, the
-   scan uploads each newly exported (or refreshed) meeting PDF into the store — tagged
-   with `path`/`committee`/`date`/`page_count` metadata so results can be mapped back to
-   `GetMeetingTool` — and backfills any already-exported PDFs that were never synced.
+2. Run `php artisan boarddocs:scan` (or `prefetch` + `build`) as usual, then sync the
+   store as its own step:
+
+   ```bash
+   php artisan boarddocs:sync-vector
+   ```
+
+   This uploads, for every meeting `boarddocs:build` has already produced: the merged
+   agenda PDF, the raw print-agenda HTML, and every raw attachment file — each tagged
+   with `path`/`district`/`committee`/`date`/`kind` metadata (plus `bookmark`/`title`/
+   `item_unique`/`file_unique`/`href` for attachments) so a FileSearch citation on any
+   of them can be traced back to the exact meeting and, for attachments, the exact file.
+   It's a separate command (rather than running inline during `build`) so a slow or
+   failing upload to the vector store's API never interrupts PDF generation. It's
+   idempotent — each document's id is recorded on the meeting's index entry, and re-runs
+   only touch files that don't have one yet, unless you pass `--force`.
 
 With the driver set to `vector`, `BoardDocsAgent` registers
 `Laravel\Ai\Providers\Tools\FileSearch` against that store instead of `SearchAgendasTool`

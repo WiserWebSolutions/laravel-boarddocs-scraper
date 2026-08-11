@@ -207,10 +207,12 @@ return [
     |                either way. Requires `composer require laravel/ai`.
     |
     | vector_store.id: the store ID returned by Laravel\Ai\Stores::create().
-    |                   boarddocs:build (and therefore boarddocs:scan, which
-    |                   runs it) uploads each exported meeting PDF into this
-    |                   store (with path/committee/date metadata) whenever
-    |                   search_driver is "vector".
+    |                   boarddocs:sync-vector (run separately, after
+    |                   boarddocs:build/scan) uploads each meeting's built PDF
+    |                   plus its raw agenda HTML and raw attachment files into
+    |                   this store, each tagged with the meeting (and, for
+    |                   attachments, the specific file) it belongs to,
+    |                   whenever search_driver is "vector".
     |
     */
 

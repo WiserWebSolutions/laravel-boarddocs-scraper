@@ -6,12 +6,14 @@ use Laravel\Ai\Files\Document;
 use Laravel\Ai\Stores;
 
 /**
- * Uploads exported meeting PDFs into a Laravel AI SDK vector store so
- * FileSearch (see BoardDocsAgent) can retrieve them semantically, as an
- * alternative to the local IndexSearcher keyword search.
+ * Uploads exported meeting PDFs (and, via syncDocument(), any other file —
+ * raw agenda HTML, individual raw attachments) into a Laravel AI SDK vector
+ * store so FileSearch (see BoardDocsAgent) can retrieve them semantically, as
+ * an alternative to the local IndexSearcher keyword search.
  *
  * Storing "path"/"committee"/"date"/"page_count" as metadata on each document
  * lets an agent map a FileSearch citation back to GetMeetingTool's "path".
+ * boarddocs:sync-vector is what actually drives this against a built archive.
  */
 class VectorStoreSync
 {
@@ -38,22 +40,37 @@ class VectorStoreSync
      */
     public function sync(array $entry, string $relativePath, ?array $previous = null): array
     {
-        $store = Stores::get($this->storeId(), $this->config['ai']['vector_store']['provider'] ?? null);
-
-        if (! empty($previous['vector_document_id'])) {
-            $store->remove($previous['vector_document_id'], deleteFile: true);
-        }
-
-        $document = Document::fromStorage($relativePath, disk: $this->config['output']['disk'] ?? 'local');
-
-        $added = $store->add($document, metadata: [
+        $id = $this->syncDocument($relativePath, $this->config['output']['disk'] ?? 'local', [
             'path' => $entry['path'] ?? null,
             'district' => $entry['district'] ?? null,
             'committee' => $entry['committee'] ?? null,
             'date' => $entry['date'] ?? null,
             'page_count' => $entry['page_count'] ?? null,
-        ]);
+        ], $previous['vector_document_id'] ?? null);
 
-        return array_merge($entry, ['vector_document_id' => $added->id]);
+        return array_merge($entry, ['vector_document_id' => $id]);
+    }
+
+    /**
+     * Upload the file at $relativePath (on $disk) into the configured vector
+     * store with the given $metadata, replacing $previousDocumentId if one is
+     * given, and return the new document's id. Used for anything beyond the
+     * merged meeting PDF — e.g. the raw agenda HTML or an individual raw
+     * attachment file — so each can carry its own metadata (see
+     * BoardDocsScraper\Console\SyncVectorCommand).
+     */
+    public function syncDocument(string $relativePath, ?string $disk, array $metadata, ?string $previousDocumentId = null): string
+    {
+        $store = Stores::get($this->storeId(), $this->config['ai']['vector_store']['provider'] ?? null);
+
+        if (! empty($previousDocumentId)) {
+            $store->remove($previousDocumentId, deleteFile: true);
+        }
+
+        $document = Document::fromStorage($relativePath, disk: $disk);
+
+        $added = $store->add($document, metadata: $metadata);
+
+        return $added->id;
     }
 }
