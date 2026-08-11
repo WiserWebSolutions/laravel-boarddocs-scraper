@@ -3,6 +3,8 @@
 namespace BoardDocsScraper;
 
 use BoardDocsScraper\Console\BuildCommand;
+use BoardDocsScraper\Console\ClearArchiveCommand;
+use BoardDocsScraper\Console\ClearOutputCommand;
 use BoardDocsScraper\Console\CreateVectorStoreCommand;
 use BoardDocsScraper\Console\PrefetchCommand;
 use BoardDocsScraper\Console\ScanCommand;
@@ -41,6 +43,8 @@ class BoardDocsServiceProvider extends ServiceProvider
                 PrefetchCommand::class,
                 BuildCommand::class,
                 StatusCommand::class,
+                ClearArchiveCommand::class,
+                ClearOutputCommand::class,
             ]);
         }
     }

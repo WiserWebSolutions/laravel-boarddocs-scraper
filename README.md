@@ -142,6 +142,32 @@ php artisan boarddocs:search budget transportation --committee=Finance --limit=1
 php artisan boarddocs:search budget --json               # machine-readable output
 ```
 
+### Starting over
+
+Two commands wipe previously fetched/built data so the next run starts from scratch
+instead of skipping what's already there (e.g. after changing the PDF template):
+
+| Command | Deletes | Leaves untouched |
+|---------|---------|-------------------|
+| `boarddocs:clear-archive` | Archived agenda HTML, attachments, and cached committee/meeting lists | Generated PDFs + index |
+| `boarddocs:clear-output` | Generated PDFs and their `index.jsonl` entries | The archive — `boarddocs:build` can regenerate everything from it |
+
+Both default to the configured site and ask for confirmation; pass `--all` to wipe
+every site instead of just one, and `--force` to skip the prompt.
+
+```bash
+# Wipe one site's archive so the next prefetch re-fetches everything
+php artisan boarddocs:clear-archive --site=pa/phoe
+
+# Wipe one site's generated PDFs (e.g. after switching pdf.template) and rebuild
+php artisan boarddocs:clear-output --site=pa/phoe --force
+php artisan boarddocs:build --site=pa/phoe
+
+# Wipe absolutely everything
+php artisan boarddocs:clear-archive --all --force
+php artisan boarddocs:clear-output --all --force
+```
+
 ### Two on-disk trees: what BoardDocs gave us vs. what we produce
 
 Everything is split across two directories (on the `local` disk by default, i.e. under

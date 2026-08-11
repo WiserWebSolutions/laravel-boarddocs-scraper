@@ -108,6 +108,34 @@ class IndexBuilder
         return count($this->entries);
     }
 
+    /**
+     * Drop every entry for a district (as produced by
+     * Urls::districtIdFromSite()) — used by `boarddocs:clear-output` to prune
+     * a single site's entries without touching other sites' indexed meetings.
+     */
+    public function forgetDistrict(string $district): int
+    {
+        $before = count($this->entries);
+
+        $this->entries = array_filter(
+            $this->entries,
+            fn ($entry) => ($entry['district'] ?? '') !== $district
+        );
+
+        return $before - count($this->entries);
+    }
+
+    /**
+     * Drop every entry — used by `boarddocs:clear-output --all` when the
+     * output directory itself isn't being deleted outright.
+     */
+    public function clear(): static
+    {
+        $this->entries = [];
+
+        return $this;
+    }
+
     public function path(): string
     {
         return $this->config['output']['index'] ?? 'boarddocs/index.jsonl';
