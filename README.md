@@ -315,9 +315,53 @@ See `config/boarddocs.php`. Highlights:
 | `archive.enabled`, `archive.disk`, `archive.path` | Where BoardDocs' raw agenda HTML/attachments are kept, unmodified (see [Two on-disk trees](#two-on-disk-trees-what-boarddocs-gave-us-vs-what-we-produce)) |
 | `pdf.engine` | `tcpdf` or `browsershot` |
 | `pdf.self_contained`, `pdf.remap_links`, `pdf.embed_non_pdf` | Self-contained PDF behavior |
+| `pdf.template`, `pdf.templates` | Controls the fonts/colors/spacing of the generated PDF — see [PDF templates](#pdf-templates) |
 | `scan.refresh_recent_days` | Re-export window for recent meetings |
 | `ai.search_driver` | `jsonl` (default, local keyword search) or `vector` |
 | `ai.vector_store.id`, `ai.vector_store.provider` | Vector store used when `ai.search_driver` is `vector` |
+
+## PDF templates
+
+`pdf.template` (default `default`) controls the fonts, colors, and spacing applied to
+the agenda in the generated PDF. `BoardDocsScraper\Pdf\Templates\DefaultTemplate` is a
+clean, modern, minimal-color design: neutral grays for body text with a single muted-blue
+accent for headings and links.
+
+To build a custom template, implement `BoardDocsScraper\Pdf\Templates\PdfTemplate`:
+
+```php
+use BoardDocsScraper\Pdf\Templates\PdfTemplate;
+
+class MyTemplate implements PdfTemplate
+{
+    public function styleBlock(): string
+    {
+        // A <style> block for TCPDF's writeHTML(). TCPDF's CSS parser only
+        // understands a small subset (core PDF fonts, no flexbox/grid,
+        // unreliable borders on non-table elements) — keep this simple.
+        return '<style>body { font-family: helvetica; font-size: 10pt; }</style>';
+    }
+
+    public function document(string $body, string $baseUrl): string
+    {
+        // A full HTML document for the browsershot engine, which renders with
+        // real headless Chrome and supports the full CSS spec.
+        return "<!DOCTYPE html><html><head><style>...</style></head><body>{$body}</body></html>";
+    }
+}
+```
+
+Register it under `pdf.templates` in `config/boarddocs.php` and point `pdf.template` at
+its key, or set `pdf.template` directly to the class name:
+
+```php
+'pdf' => [
+    'template' => 'mine',
+    'templates' => [
+        'mine' => \App\Pdf\MyTemplate::class,
+    ],
+],
+```
 
 ## Troubleshooting
 

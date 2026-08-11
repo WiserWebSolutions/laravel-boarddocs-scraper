@@ -73,7 +73,8 @@ class BrowsershotEngine implements PdfEngine
 
     protected function renderAgenda(MeetingDocument $document): string
     {
-        $html = AgendaHtml::document($document->agendaHtml, $document->baseUrl);
+        $body = AgendaHtml::clean($document->agendaHtml);
+        $html = $document->template()->document($body, $document->baseUrl);
 
         $shot = Browsershot::html($html)
             ->format('Letter')

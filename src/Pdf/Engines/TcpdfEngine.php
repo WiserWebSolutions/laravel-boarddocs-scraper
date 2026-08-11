@@ -26,6 +26,7 @@ class TcpdfEngine implements PdfEngine
     {
         $saved = $document->savedAttachments;
         $cleanAgenda = AgendaHtml::clean($document->agendaHtml);
+        $styleBlock = $document->template()->styleBlock();
 
         // Attachments were streamed straight to a temp dir on download (see
         // AttachmentCollector); always clean that dir up, even on failure.
@@ -33,7 +34,7 @@ class TcpdfEngine implements PdfEngine
 
         try {
             // (1) Agenda page count (layout is independent of link href values).
-            $agendaPages = $this->agendaPageCount($document, $cleanAgenda);
+            $agendaPages = $this->agendaPageCount($document, $cleanAgenda, $styleBlock);
 
             // (2) Probe attachments and predict their destination pages.
             $info = ($document->selfContained() && ! empty($saved)) ? Assembler::probe($saved) : [];
@@ -56,7 +57,7 @@ class TcpdfEngine implements PdfEngine
             // (4) Render for real.
             $pdf = Assembler::newPdf($document);
             $pdf->AddPage();
-            $pdf->writeHTML(AgendaHtml::styleBlock()."\n".$agendaFragment, true, false, true, false, '');
+            $pdf->writeHTML($styleBlock."\n".$agendaFragment, true, false, true, false, '');
             $pdf->Bookmark('Agenda', 0, 0, 1);
 
             $toc = [['title' => 'Agenda', 'page' => 1]];
@@ -78,11 +79,11 @@ class TcpdfEngine implements PdfEngine
     /**
      * Render the agenda alone to determine how many pages it occupies.
      */
-    protected function agendaPageCount(MeetingDocument $document, string $cleanAgenda): int
+    protected function agendaPageCount(MeetingDocument $document, string $cleanAgenda, string $styleBlock): int
     {
         $pdf = Assembler::newPdf($document);
         $pdf->AddPage();
-        $pdf->writeHTML(AgendaHtml::styleBlock()."\n".$cleanAgenda, true, false, true, false, '');
+        $pdf->writeHTML($styleBlock."\n".$cleanAgenda, true, false, true, false, '');
 
         return $pdf->getPage();
     }

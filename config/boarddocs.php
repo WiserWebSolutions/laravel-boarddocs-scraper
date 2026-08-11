@@ -137,6 +137,11 @@ return [
     | remap_links:     convert remote BoardDocs links in the agenda into PDF
     |                  GoTo anchors that jump to the merged attachment pages.
     | embed_non_pdf:   attach non-PDF files (docx, xlsx, ...) as embedded files.
+    | template:        controls the fonts/colors/spacing of the generated PDF.
+    |                  One of the keys in "templates" below, a fully-qualified
+    |                  BoardDocsScraper\Pdf\Templates\PdfTemplate class name, or
+    |                  a PdfTemplate instance. "default" ships a clean, modern,
+    |                  minimal-color design.
     |
     */
 
@@ -145,6 +150,10 @@ return [
         'self_contained' => (bool) env('BOARDDOCS_SELF_CONTAINED', true),
         'remap_links' => (bool) env('BOARDDOCS_REMAP_LINKS', true),
         'embed_non_pdf' => (bool) env('BOARDDOCS_EMBED_NON_PDF', true),
+        'template' => env('BOARDDOCS_PDF_TEMPLATE', 'default'),
+        'templates' => [
+            'default' => \BoardDocsScraper\Pdf\Templates\DefaultTemplate::class,
+        ],
         'page_size' => env('BOARDDOCS_PAGE_SIZE', 'LETTER'),
         'orientation' => env('BOARDDOCS_PAGE_ORIENTATION', 'P'),
         'margins' => [

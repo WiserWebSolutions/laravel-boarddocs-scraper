@@ -3,6 +3,8 @@
 namespace BoardDocsScraper\Pdf;
 
 use BoardDocsScraper\Data\SavedAttachment;
+use BoardDocsScraper\Pdf\Templates\PdfTemplate;
+use BoardDocsScraper\Pdf\Templates\TemplateResolver;
 
 /**
  * An immutable description of the PDF to build for one meeting: the agenda HTML,
@@ -45,5 +47,10 @@ class MeetingDocument
     public function embedNonPdf(): bool
     {
         return (bool) $this->option('embed_non_pdf', true);
+    }
+
+    public function template(): PdfTemplate
+    {
+        return TemplateResolver::resolve($this->options);
     }
 }
