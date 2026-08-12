@@ -2,6 +2,7 @@
 
 namespace BoardDocsScraper;
 
+use BoardDocsScraper\Console\AiSearchCommand;
 use BoardDocsScraper\Console\BuildCommand;
 use BoardDocsScraper\Console\ClearArchiveCommand;
 use BoardDocsScraper\Console\ClearOutputCommand;
@@ -40,6 +41,7 @@ class BoardDocsServiceProvider extends ServiceProvider
             $this->commands([
                 ScanCommand::class,
                 SearchCommand::class,
+                AiSearchCommand::class,
                 CreateVectorStoreCommand::class,
                 PrefetchCommand::class,
                 BuildCommand::class,

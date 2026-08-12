@@ -140,6 +140,9 @@ php artisan boarddocs:build --site=pa/phoe               # build only, zero Boar
 # Search the exported index
 php artisan boarddocs:search budget transportation --committee=Finance --limit=10
 php artisan boarddocs:search budget --json               # machine-readable output
+
+# Ask an AI agent instead (see "Laravel AI SDK integration" below)
+php artisan boarddocs:ai-search "What did the board decide about the 2024 budget?"
 ```
 
 ### Starting over
@@ -266,6 +269,17 @@ use BoardDocsScraper\Ai\BoardDocsAgent;
 
 $answer = (new BoardDocsAgent)->prompt('What did the Policy Committee decide about edtech?');
 ```
+
+...or from the command line:
+
+```bash
+php artisan boarddocs:ai-search "What did the Policy Committee decide about edtech?"
+```
+
+Pass `--show-tool-calls` to see which tool calls the agent made along the way, or `--json`
+for the raw text + tool calls as JSON. `--provider=`/`--model=` override the defaults from
+your `ai` config. This is the AI-agent counterpart to `boarddocs:search`, which only ever
+does local keyword matching and never calls a model.
 
 …or register the individual tools on your own agent:
 
