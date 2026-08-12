@@ -348,9 +348,15 @@ scanned attachments or phrasing that keyword search misses.
    only touch files that don't have one yet, unless you pass `--force`.
 
 With the driver set to `vector`, `BoardDocsAgent` registers
-`Laravel\Ai\Providers\Tools\FileSearch` against that store instead of `SearchAgendasTool`
-(falling back to `SearchAgendasTool` automatically if `vector_store.id` isn't set).
-`GetMeetingTool` and `ListCommitteesTool` are unaffected by the driver either way.
+`Laravel\Ai\Providers\Tools\FileSearch` against that store **as its only tool**, instead of
+`SearchAgendasTool`/`GetMeetingTool`/`ListCommitteesTool` (falling back to that trio
+automatically if `vector_store.id` isn't set). `GetMeetingTool` and `ListCommitteesTool` are
+dropped under the vector driver because Gemini rejects a request that combines its built-in
+FileSearch tool with regular function-calling tools unless
+`tool_config.include_server_side_tool_invocations` is set — something `laravel/ai`'s Gemini
+gateway doesn't currently send. `boarddocs:sync-vector`'s per-file metadata (`kind`,
+`committee`, `date`, `bookmark`/`title` for attachments) is what lets the model still identify
+which meeting and file a retrieved chunk came from, without a follow-up tool call.
 
 ## Configuration
 
